@@ -682,13 +682,14 @@
                   <div class="row">
                     <div>
                       <label>Categoría</label>
-                      <select id="selCategory">
-                        <option value="DOCUMENTOS">📄 Documentos (Manual)</option>
-                        <option value="MKT">🧩 MKT (Manual)</option>
-                        <option value="ARCHIVO">🗂️ Archivo (Manual)</option>
-                        <option value="RESERVADO">🟦 Reservado</option>
-                        <option value="BLOQUEADO">⛔ Bloqueado / No usar</option>
-                      </select>
+                      <input id="selCategory" list="dlCategory" placeholder="Selecciona o escribe categoría" value="DOCUMENTOS"/>
+                      <datalist id="dlCategory">
+                        <option value="DOCUMENTOS"></option>
+                        <option value="MKT"></option>
+                        <option value="ARCHIVO"></option>
+                        <option value="RESERVADO"></option>
+                        <option value="BLOQUEADO"></option>
+                      </datalist>
                     </div>
                     <div>
                       <label>Modo</label>
@@ -1046,43 +1047,6 @@
     </div>
   </div>
 
-<!-- Firebase (Opción A: ES Modules) -->
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getFirestore, doc, setDoc, getDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-
-  const firebaseConfig = {
-    apiKey: "AIzaSyBBrLGNfBdKiFdrn4VBpuzB2ZkOf_EbjpI",
-    authDomain: "capacity-tools-b09d6.firebaseapp.com",
-    projectId: "capacity-tools-b09d6",
-    storageBucket: "capacity-tools-b09d6.firebasestorage.app",
-    messagingSenderId: "241517150762",
-    appId: "1:241517150762:web:372131dc4ddb9ced14b953"
-  };
-
-  const app = initializeApp(firebaseConfig);
-  const db  = getFirestore(app);
-
-  // API global mínima para el HTML (sin romper tu JS actual)
-  window.saveCierreMes = async (mesId, payload) => {
-    if(!mesId) throw new Error("mesId requerido");
-    await setDoc(doc(db, "cierres_mensuales", mesId), {
-      ...payload,
-      mesId,
-      updatedAt: serverTimestamp()
-    }, { merge: true });
-    return true;
-  };
-
-  window.loadCierreMes = async (mesId) => {
-    if(!mesId) throw new Error("mesId requerido");
-    const snap = await getDoc(doc(db, "cierres_mensuales", mesId));
-    return snap.exists() ? snap.data() : null;
-  };
-
-  window.__capacityToolsFirebase = { projectId: firebaseConfig.projectId };
-</script>
-
 <script>
   const pad3 = n => String(n).padStart(3,'0');
   const pad2 = n => String(n).padStart(2,'0');
@@ -1157,32 +1121,6 @@
 
   let ioManual = loadIOM();
   let ioSnaps = loadIOSnaps();
-
-  // 🔥 Firebase: si abres un mes "cerrado" en otra PC (sin localStorage),
-  // intentamos traer el snapshot desde Firestore.
-  async function ensureSnapFromFirebase(monthKey){
-    try{
-      if(!monthKey || monthKey==="SIN-FECHA") return false;
-      if(ioSnaps && ioSnaps[monthKey]) return true;
-      if(typeof window.loadCierreMes !== "function") return false;
-
-      const data = await window.loadCierreMes(monthKey);
-      if(!data || !Array.isArray(data.rows)) return false;
-
-      ioSnaps[monthKey] = {
-        createdAt: data.createdAt || new Date().toISOString(),
-        taggedUnits: Number(data.taggedUnits || 0),
-        rows: data.rows
-      };
-      saveIOSnaps(); // también lo deja cacheado en local
-      return true;
-    }catch(err){
-      console.warn("Firebase snapshot load error:", err);
-      return false;
-    }
-  }
-
-
 
   let state = { transitory: {units:0, need:0, allocated:0} };
   let derived = new Map();
@@ -1819,14 +1757,7 @@
       selMonth.value = "CUR|SIN-DATOS";
     }
 
-    selMonth.onchange = async ()=> {
-      const v = String(selMonth.value||"");
-      if(v.startsWith("SNAP|")){
-        const mk = v.split("|")[1] || "";
-        await ensureSnapFromFirebase(mk);
-      }
-      renderInboundOutbound();
-    };
+    selMonth.onchange = ()=> renderInboundOutbound();
   }
 
   function parseAnyDate(v){
@@ -2098,7 +2029,7 @@
     // Cerrar mes (snapshot)
     if(btnCloseMonth){
       btnCloseMonth.disabled = (isSnap || rows.length===0 || monthKey==="SIN-FECHA");
-      btnCloseMonth.onclick = async ()=>{
+      btnCloseMonth.onclick = ()=>{
         if(isSnap) return;
         if(monthKey==="SIN-FECHA") return alert("⚠️ No se puede cerrar 'Sin fecha'.");
         if(!confirm(`Cerrar ${monthLabel(monthKey)}: se guardará snapshot y NO se afectará con futuros pegados. ¿Confirmas?`)) return;
@@ -2111,19 +2042,6 @@
           rows: minRows
         };
         saveIOSnaps();
-
-        // ✅ Persistencia en nube (Firestore) — para que el "Cerrar mes" sobreviva a otras PCs
-        try{
-          if(typeof window.saveCierreMes === "function"){
-            await window.saveCierreMes(monthKey, {
-              createdAt: ioSnaps[monthKey].createdAt,
-              taggedUnits: ioSnaps[monthKey].taggedUnits,
-              rows: ioSnaps[monthKey].rows
-            });
-          }
-        }catch(err){
-          console.warn("Firebase snapshot save error:", err);
-        }
         rebuildMonthSelector();
         document.getElementById("selMonth").value = `SNAP|${monthKey}`;
         renderInboundOutbound();
