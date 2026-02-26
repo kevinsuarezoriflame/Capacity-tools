@@ -20,6 +20,7 @@
       --blue:#3b82f6;
       --red:#ef4444;
       --teal:#12b9b2;
+      --amber:#f59e0b;
 
       --shadow: 0 10px 24px rgba(15, 23, 42, .10);
       --radius: 16px;
@@ -247,6 +248,7 @@
     }
     .slot.low{ background: var(--orange); }
     .slot.full{ background: var(--green); }
+    .slot.pack{ background: var(--amber); }
     .slot.manual{ background: var(--blue); }
     .slot.block{ background: var(--red); }
     .slot.reserve{ background: var(--teal); }
@@ -815,6 +817,7 @@
           <div><h3>Layout tipo Pasillo (090 → 001)</h3></div>
           <div class="minimap-legend">
             <span class="pill"><span class="sw" style="background:var(--green)"></span> Stock</span>
+            <span class="pill"><span class="sw" style="background:var(--amber)"></span> M. Empaque</span>
             <span class="pill"><span class="sw" style="background:var(--blue)"></span> Manual</span>
             <span class="pill"><span class="sw" style="background:var(--orange)"></span> Bajo stock</span>
             <span class="pill"><span class="sw" style="background:var(--gray)"></span> Vacío</span>
@@ -1068,7 +1071,7 @@
           <div class="chartBox">
             <canvas id="occLine" width="860" height="360" style="width:100%;height:auto;"></canvas>
             <div class="hint" style="margin-top:10px;">
-              Fuente: guardado diario automático (Firestore) • Solo % ocupación del panel.
+              Fuente: guardado diario automático (Firestore) • % ocupación + pallets usados del panel.
             </div>
           </div>
           <div class="sideBox">
@@ -1079,6 +1082,10 @@
             <div class="kpi">
               <div class="lbl">Ocupación</div>
               <div class="val" id="occLastPct">—</div>
+            </div>
+            <div class="kpi">
+              <div class="lbl">Pallets usados</div>
+              <div class="val" id="occLastPallets">—</div>
             </div>
             <div class="kpi">
               <div class="lbl">Días guardados</div>
@@ -1155,6 +1162,7 @@
 
   let stockMap = new Map();
   let stockItemsMap = new Map();
+  let packLocSet = new Set();
   let stockRowsParsed = [];
 
   let movesRowsParsed = [];
@@ -1252,6 +1260,11 @@
   };
 
   const DEFAULT_MANUAL_CFG = { state:"manual", label:"Manual", class:"manual", color:"var(--blue)" };
+
+
+  // Códigos fijos de Material de Empaque (embebidos desde Libro5.xlsx)
+  const PACK_CODES = new Set(["800175", "803254", "803255", "803256", "803257", "803262", "803264", "803266", "803269", "803449", "803450", "803452", "803456", "803457", "803491", "803492", "803494", "803496", "803715", "803716", "825954", "826044", "826952", "826961", "827008", "827108", "827383", "827509", "827510", "827523", "827801", "827831", "827832", "827922", "828333", "828334", "828335", "828449", "828623", "828711", "829715", "830103", "830117", "830208", "830513", "830514", "830516", "830759", "830846", "830847", "830848", "830849", "831491", "831492", "831493", "831494", "831628", "831648", "831840", "831841", "831842", "831843", "831844", "831846", "831851", "832014", "832023", "832025", "832131", "832132", "832153", "832154", "832172", "832218", "832261", "832308", "832384", "832406", "832407", "832424", "827509", "832549"]);
+  const isPackCode = (v)=> PACK_CODES.has(String(v||"").trim());
 
   function normalizeCategory(raw){
     let c = String(raw||"").replace(/\s+/g," ").trim().toUpperCase();
@@ -1659,6 +1672,8 @@
 
       if(!isValidLoc(loc)) continue;
       stockMap.set(loc, (stockMap.get(loc)||0) + q);
+      // Marca ubicación como Material de Empaque si el código está en la lista y tiene stock
+      if(q>0 && variante && isPackCode(variante)) packLocSet.add(loc);
 
       if(variante){
         const byVar = stockItemsMap.get(loc) || new Map();
@@ -2606,7 +2621,10 @@
 
       const qty = stockMap.get(loc) || 0;
       if(qty > 0){
-        if(lowEnabled && qty <= lowTh){
+        // Prioridad: Material de Empaque (solo si tiene stock)
+        if(packLocSet.has(loc)){
+          derived.set(loc, { state:"pack", qty, manualCategory:"M. Empaque" });
+        }else if(lowEnabled && qty <= lowTh){
           derived.set(loc, { state:"low", qty, manualCategory:"" });
         }else{
           derived.set(loc, { state:"stock", qty, manualCategory:"" });
@@ -2891,6 +2909,7 @@
 
   function stateToClass(state){
     if(state==="stock") return "full";
+    if(state==="pack") return "pack";
     if(state==="low") return "low";
     if(state==="manual") return "manual";
     if(state==="block") return "block";
@@ -2910,6 +2929,7 @@
 
   function prettyState(state){
     if(state==="stock") return "🟩 Stock lleno";
+    if(state==="pack") return "🟨 M. Empaque";
     if(state==="low") return "🟧 Bajo stock";
     if(state==="manual") return "🟦 Manual";
     if(state==="block") return "⛔ Bloqueado";
@@ -2959,7 +2979,8 @@
     const totalCatalog = catalog.length;
 
     let blockedCount=0;
-    let stockCount=0;
+    let productCount=0; // stock normal (no empaque)
+    let packCount=0;    // Material de Empaque
     const manualCounts = new Map();
     const usedByRack = {1:0, 2:0};
     const blockedByRack = {1:0, 2:0};
@@ -2974,8 +2995,11 @@
         continue;
       }
 
-      if(d.state === "stock" || d.state === "low" || d.state === "transit"){
-        stockCount++;
+      if(d.state === "pack"){
+        packCount++;
+        usedByRack[r]++;
+      }else if(d.state === "stock" || d.state === "low" || d.state === "transit"){
+        productCount++;
         usedByRack[r]++;
       }else if(d.state === "manual" || d.state === "reserve"){
         const cat = d.manualCategory || "MANUAL";
@@ -2985,7 +3009,7 @@
     }
 
     const available = totalCatalog - blockedCount;
-    const usedTotal = stockCount + Array.from(manualCounts.values()).reduce((a,b)=>a+b,0);
+    const usedTotal = productCount + packCount + Array.from(manualCounts.values()).reduce((a,b)=>a+b,0);
     const capPct = available>0 ? (usedTotal/available)*100 : 0;
 
     const rackTotals = {1:0,2:0};
@@ -2997,7 +3021,7 @@
       2: rackTotals[2] - usedByRack[2] - blockedByRack[2],
     };
 
-    return { totalCatalog, blockedCount, available, stockCount, manualCounts, usedTotal, capPct, rackTotals, usedByRack, blockedByRack, availByRack };
+    return { totalCatalog, blockedCount, available, productCount, packCount, manualCounts, usedTotal, capPct, rackTotals, usedByRack, blockedByRack, availByRack };
   }
 
   function rackOfLoc(loc){
@@ -3113,7 +3137,8 @@
     if(capPctEl) capPctEl.textContent = `${c.capPct.toFixed(2)}%`;
 
     const rows = [];
-    rows.push({ key:"PRODUCTOS", label:"Productos", value:c.stockCount, color:"var(--teal)" });
+    rows.push({ key:"PRODUCTOS", label:"Productos", value:c.productCount, color:"var(--teal)" });
+    rows.push({ key:"PACK", label:"M. Empaque", value:c.packCount, color:"var(--amber)" });
 
     const sortedCats = Array.from(c.manualCounts.entries()).sort((a,b)=>b[1]-a[1]);
     for(const [cat, val] of sortedCats){
@@ -3191,11 +3216,12 @@
     return `${y}-${m}-${day}`;
   }
 
-  async function saveToday(pct){
+  async function saveToday(pct, palletsUsed){
     const date = todayStr();
     await setDoc(doc(db, COL, date), {
       date,
       pct: Number(pct),
+      palletsUsed: (palletsUsed==null ? null : Number(palletsUsed)),
       updatedAt: serverTimestamp()
     }, { merge:true });
     return date;
@@ -3220,6 +3246,7 @@
   const occRangeLbl = document.getElementById("occRangeLbl");
   const occLastDate = document.getElementById("occLastDate");
   const occLastPct = document.getElementById("occLastPct");
+  const occLastPallets = document.getElementById("occLastPallets");
   const occDays = document.getElementById("occDays");
 
   function openOccModal(){ if(modalOcc) modalOcc.classList.add("open"); }
@@ -3232,6 +3259,19 @@
     const el = document.getElementById("capPct");
     if(!el) return null;
     const t = (el.textContent||"").replace("%","").trim().replace(",",".");
+    const v = Number(t);
+    return Number.isFinite(v) ? v : null;
+  }
+
+  function getCurrentPalletsUsed(){
+    const el = document.getElementById("pUsed");
+    if(!el) return null;
+    // acepta formatos tipo 267, 1.234, 1,234
+    let t = (el.textContent||"").trim();
+    t = t.replace(/[^0-9.,-]/g, "");
+    // si tiene ambos separadores, asume punto como miles y coma como decimal
+    if(t.includes(".") && t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
+    else t = t.replace(/\./g, "");
     const v = Number(t);
     return Number.isFinite(v) ? v : null;
   }
@@ -3253,6 +3293,10 @@
       const last = data[data.length-1];
       if(occLastDate) occLastDate.textContent = last.date || "—";
       if(occLastPct) occLastPct.textContent = (Number(last.pct)).toFixed(2) + "%";
+      if(occLastPallets){
+        const pv = (last.palletsUsed==null ? "—" : String(Math.round(Number(last.palletsUsed))));
+        occLastPallets.textContent = pv;
+      }
       if(occRangeLbl){
         const first = data[0].date;
         const lastD = last.date;
@@ -3261,6 +3305,7 @@
     }else{
       if(occLastDate) occLastDate.textContent = "—";
       if(occLastPct) occLastPct.textContent = "—";
+      if(occLastPallets) occLastPallets.textContent = "—";
       if(occRangeLbl) occRangeLbl.textContent = "—";
     }
 
@@ -3274,13 +3319,18 @@
         alert("No se pudo leer el % de ocupación actual.");
         return;
       }
+      const palletsUsed = getCurrentPalletsUsed();
+      if(palletsUsed===null){
+        alert("No se pudo leer el total de pallets usados.");
+        return;
+      }
       if(!window.occCloud){
         alert("Firebase no está listo aún. Revisa conexión / carga del script.");
         return;
       }
       try{
-        const d = await window.occCloud.saveToday(pct);
-        alert(`✅ Ocupación guardada para ${d}: ${pct.toFixed(2)}%`);
+        const d = await window.occCloud.saveToday(pct, palletsUsed);
+        alert(`✅ Ocupación guardada para ${d}: ${pct.toFixed(2)}% • Pallets usados: ${Math.round(palletsUsed)}`);
       }catch(err){
         console.error(err);
         alert("❌ No se pudo guardar en Firebase. Revisa Firestore Rules / conexión.");
