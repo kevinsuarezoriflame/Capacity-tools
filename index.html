@@ -920,6 +920,10 @@
             <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
               <div class="capCardTitle" style="margin:0;">🏗️ Total pallets bodega central</div>
               <div class="capBadge"><span class="sw" style="background:var(--teal)"></span><span id="capPct">0%</span> ocupación</div>
+              <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <button class="btn sm" id="btnSaveOccToday" type="button">Guardar ocupación (hoy)</button>
+                <button class="btn ghost sm" id="btnViewOccHistory" type="button">Ver evolución</button>
+              </div>
             </div>
 
             <table class="tbl mini" style="margin-top:10px;">
@@ -1047,6 +1051,44 @@
     </div>
   </div>
 
+
+
+  <!-- Modal: evolución ocupación diaria -->
+  <div class="modal" id="modalOcc">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-title">📈 Evolución de ocupación • <span id="occRangeLbl" style="font-weight:900;color:#0f4a42;"></span></div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button class="btn sm" id="btnExportOccPng" type="button">Descargar PNG</button>
+          <button class="btn danger sm" id="btnCloseModalOcc" type="button">Cerrar</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="modal-grid">
+          <div class="chartBox">
+            <canvas id="occLine" width="860" height="360" style="width:100%;height:auto;"></canvas>
+            <div class="hint" style="margin-top:10px;">
+              Fuente: guardado diario automático (Firestore) • Solo % ocupación del panel.
+            </div>
+          </div>
+          <div class="sideBox">
+            <div class="kpi">
+              <div class="lbl">Último día</div>
+              <div class="val" id="occLastDate">—</div>
+            </div>
+            <div class="kpi">
+              <div class="lbl">Ocupación</div>
+              <div class="val" id="occLastPct">—</div>
+            </div>
+            <div class="kpi">
+              <div class="lbl">Días guardados</div>
+              <div class="val" id="occDays">—</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 <script>
   const pad3 = n => String(n).padStart(3,'0');
   const pad2 = n => String(n).padStart(2,'0');
@@ -2357,6 +2399,102 @@
     ctx.fillText("Fecha", pl, y0+28);
   }
 
+  function drawLineChartPct(canvas, series){
+    // series: [{label, value}] where value is % (0-100)
+    const ctx = canvas.getContext("2d");
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0,0,w,h);
+
+    const pl=60, pr=18, pt=18, pb=46;
+
+    const maxV = Math.max(1, ...series.map(d=>d.value));
+    const steps = 5;
+
+    // grid
+    ctx.strokeStyle = "rgba(15,23,42,.18)";
+    ctx.lineWidth = 1;
+    for(let i=0;i<=steps;i++){
+      const y = pt + (h-pt-pb)*(i/steps);
+      ctx.beginPath();
+      ctx.moveTo(pl, y);
+      ctx.lineTo(w-pr, y);
+      ctx.stroke();
+    }
+
+    // axes
+    ctx.strokeStyle = "rgba(15,23,42,.30)";
+    ctx.beginPath();
+    ctx.moveTo(pl, pt);
+    ctx.lineTo(pl, h-pb);
+    ctx.lineTo(w-pr, h-pb);
+    ctx.stroke();
+
+    // y labels
+    ctx.fillStyle = "rgba(15,23,42,.75)";
+    ctx.font = "700 11px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    for(let i=0;i<=steps;i++){
+      const v = (maxV*(1 - i/steps));
+      const y = pt + (h-pt-pb)*(i/steps);
+      ctx.fillText(v.toFixed(1)+"%", pl-8, y);
+    }
+
+    if(series.length===0){
+      ctx.fillStyle = "rgba(100,116,139,.9)";
+      ctx.font = "800 14px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("Sin datos guardados aún.", w/2, h/2);
+      return;
+    }
+
+    const x0 = pl, x1 = w-pr;
+    const y0 = h-pb, y1 = pt;
+
+    const xs = series.map((d,i)=> x0 + (x1-x0)*(series.length===1 ? 0.5 : i/(series.length-1)));
+    const ys = series.map(d => y0 - (y0-y1)*(d.value/maxV));
+
+    // line
+    ctx.strokeStyle = "rgba(239, 68, 68, .95)";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    xs.forEach((x,i)=>{
+      const y = ys[i];
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+
+    // points + value labels
+    for(let i=0;i<xs.length;i++){
+      const x = xs[i], y = ys[i];
+      ctx.fillStyle = "#ef4444";
+      ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2); ctx.fill();
+
+      const txt = series[i].value.toFixed(2)+"%";
+      ctx.fillStyle = "rgba(15,23,42,.85)";
+      ctx.font = "800 10.5px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      ctx.fillText(txt, x, y-8);
+    }
+
+    // x labels (fecha corta)
+    ctx.fillStyle = "rgba(15,23,42,.75)";
+    ctx.font = "700 11px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    const maxTicks = Math.min(series.length, 14);
+    const step = Math.max(1, Math.floor(series.length/maxTicks));
+    for(let i=0;i<series.length;i+=step){
+      const x = xs[i];
+      const label = series[i].label;
+      ctx.fillText(label, x, y0+10);
+    }
+  }
+
+
   if(btnCloseModalOutbound){
     btnCloseModalOutbound.onclick = ()=> modalOutbound.classList.remove("open");
   }
@@ -3023,6 +3161,151 @@
     btnToggleStock.addEventListener("click", ()=>{
       const isHidden = stockUploadBody.classList.toggle("hidden");
       btnToggleStock.textContent = isHidden ? "▸" : "▾";
+    });
+  }
+</script>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getFirestore, doc, setDoc, getDocs, collection, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBBrLGNfBdKiFdrn4VBpuzB2ZkOf_EbjpI",
+    authDomain: "capacity-tools-b09d6.firebaseapp.com",
+    projectId: "capacity-tools-b09d6",
+    storageBucket: "capacity-tools-b09d6.firebasestorage.app",
+    messagingSenderId: "241517150762",
+    appId: "1:241517150762:web:372131dc4ddb9ced14b953"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db  = getFirestore(app);
+
+  const COL = "ocupacion_diaria"; // docs: YYYY-MM-DD
+
+  function todayStr(){
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,"0");
+    const day = String(d.getDate()).padStart(2,"0");
+    return `${y}-${m}-${day}`;
+  }
+
+  async function saveToday(pct){
+    const date = todayStr();
+    await setDoc(doc(db, COL, date), {
+      date,
+      pct: Number(pct),
+      updatedAt: serverTimestamp()
+    }, { merge:true });
+    return date;
+  }
+
+  async function loadSeries(){
+    const qy = query(collection(db, COL), orderBy("date","asc"));
+    const snap = await getDocs(qy);
+    return snap.docs.map(d=>d.data()).filter(x=>typeof x.pct==="number" && x.date);
+  }
+
+  window.occCloud = { saveToday, loadSeries, todayStr };
+
+
+  // === Ocupación diaria (Firebase / Firestore) ===
+  const btnSaveOccToday = document.getElementById("btnSaveOccToday");
+  const btnViewOccHistory = document.getElementById("btnViewOccHistory");
+  const modalOcc = document.getElementById("modalOcc");
+  const btnCloseModalOcc = document.getElementById("btnCloseModalOcc");
+  const btnExportOccPng = document.getElementById("btnExportOccPng");
+  const occLine = document.getElementById("occLine");
+  const occRangeLbl = document.getElementById("occRangeLbl");
+  const occLastDate = document.getElementById("occLastDate");
+  const occLastPct = document.getElementById("occLastPct");
+  const occDays = document.getElementById("occDays");
+
+  function openOccModal(){ if(modalOcc) modalOcc.classList.add("open"); }
+  function closeOccModal(){ if(modalOcc) modalOcc.classList.remove("open"); }
+
+  if(btnCloseModalOcc) btnCloseModalOcc.addEventListener("click", closeOccModal);
+  if(modalOcc) modalOcc.addEventListener("click", (e)=>{ if(e.target===modalOcc) closeOccModal(); });
+
+  function getCurrentOccPct(){
+    const el = document.getElementById("capPct");
+    if(!el) return null;
+    const t = (el.textContent||"").replace("%","").trim().replace(",",".");
+    const v = Number(t);
+    return Number.isFinite(v) ? v : null;
+  }
+
+  async function renderOccHistory(){
+    if(!window.occCloud || !occLine) return;
+    const data = await window.occCloud.loadSeries();
+    const series = data.map(d=>{
+      const dt = String(d.date||"");
+      const mm = dt.slice(5,7);
+      const dd = dt.slice(8,10);
+      const months = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+      const lbl = (dd && mm) ? `${dd}-${months[(Number(mm)||1)-1]}` : dt;
+      return { label: lbl, value: Number(d.pct) };
+    });
+
+    if(occDays) occDays.textContent = String(series.length);
+    if(series.length){
+      const last = data[data.length-1];
+      if(occLastDate) occLastDate.textContent = last.date || "—";
+      if(occLastPct) occLastPct.textContent = (Number(last.pct)).toFixed(2) + "%";
+      if(occRangeLbl){
+        const first = data[0].date;
+        const lastD = last.date;
+        occRangeLbl.textContent = first && lastD ? `${first} → ${lastD}` : "—";
+      }
+    }else{
+      if(occLastDate) occLastDate.textContent = "—";
+      if(occLastPct) occLastPct.textContent = "—";
+      if(occRangeLbl) occRangeLbl.textContent = "—";
+    }
+
+    drawLineChartPct(occLine, series);
+  }
+
+  if(btnSaveOccToday){
+    btnSaveOccToday.addEventListener("click", async ()=>{
+      const pct = getCurrentOccPct();
+      if(pct===null){
+        alert("No se pudo leer el % de ocupación actual.");
+        return;
+      }
+      if(!window.occCloud){
+        alert("Firebase no está listo aún. Revisa conexión / carga del script.");
+        return;
+      }
+      try{
+        const d = await window.occCloud.saveToday(pct);
+        alert(`✅ Ocupación guardada para ${d}: ${pct.toFixed(2)}%`);
+      }catch(err){
+        console.error(err);
+        alert("❌ No se pudo guardar en Firebase. Revisa Firestore Rules / conexión.");
+      }
+    });
+  }
+
+  if(btnViewOccHistory){
+    btnViewOccHistory.addEventListener("click", async ()=>{
+      openOccModal();
+      try{ await renderOccHistory(); }
+      catch(err){ console.error(err); alert("❌ No se pudo cargar el histórico desde Firebase."); }
+    });
+  }
+
+  if(btnExportOccPng && occLine){
+    btnExportOccPng.addEventListener("click", ()=>{
+      try{
+        const a = document.createElement("a");
+        a.download = "ocupacion_diaria.png";
+        a.href = occLine.toDataURL("image/png");
+        a.click();
+      }catch(e){
+        alert("No se pudo exportar el gráfico.");
+      }
     });
   }
 </script>
