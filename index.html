@@ -682,13 +682,13 @@
                   <div class="row">
                     <div>
                       <label>Categoría</label>
-                      <input id="selCategory" list="dlCategory" placeholder="Selecciona o escribe categoría" value="DOCUMENTOS"/>
+                      <input id="selCategory" list="dlCategory" placeholder="Selecciona o escribe categoría" value="MKT"/>
                       <datalist id="dlCategory">
-                        <option value="DOCUMENTOS"></option>
                         <option value="MKT"></option>
-                        <option value="ARCHIVO"></option>
-                        <option value="RESERVADO"></option>
-                        <option value="BLOQUEADO"></option>
+                        <option value="ARCHIVOS"></option>
+                        <option value="MERMAS"></option>
+                        <option value="EXTINTOR"></option>
+                        <option value="BLOQUEADAS"></option>
                       </datalist>
                     </div>
                     <div>
@@ -757,7 +757,7 @@
             <div class="kpi">
               <div class="label">Total ubicaciones (catálogo)</div>
               <div class="value" id="kTotal">—</div>
-              <div class="sub">90 módulos × 7 posiciones</div>
+              <div class="sub" id="kTotalSub">90 módulos × 7 posiciones</div>
             </div>
             <div class="kpi">
               <div class="label">Llenas por stock</div>
@@ -1158,6 +1158,7 @@
   const inpLowStock = document.getElementById("inpLowStock");
 
   const kTotal = document.getElementById("kTotal");
+  const kTotalSub = document.getElementById("kTotalSub");
   const kStock = document.getElementById("kStock");
   const kManual = document.getElementById("kManual");
   const kEmpty = document.getElementById("kEmpty");
@@ -1201,16 +1202,34 @@
   const btnExportChartPng = document.getElementById("btnExportChartPng");
 
   const catConfig = {
-    DOCUMENTOS: { state:"manual", label:"Documentos", class:"manual", color:"var(--blue)" },
     MKT:        { state:"manual", label:"MKT", class:"manual", color:"var(--blue)" },
-    ARCHIVO:    { state:"manual", label:"Archivo", class:"manual", color:"var(--blue)" },
-    RESERVADO:  { state:"reserve", label:"Reservado", class:"reserve", color:"var(--teal)" },
-    BLOQUEADO:  { state:"block", label:"Bloqueado", class:"block", color:"var(--red)" },
+    ARCHIVOS:   { state:"manual", label:"Archivos", class:"manual", color:"var(--blue)" },
+    MERMAS:     { state:"manual", label:"Mermas", class:"manual", color:"var(--orange)" },
+    EXTINTOR:   { state:"manual", label:"Extintor", class:"manual", color:"var(--teal)" },
+    BLOQUEADAS: { state:"block",  label:"Bloqueadas", class:"block",  color:"var(--red)" },
   };
+
+  const DEFAULT_MANUAL_CFG = { state:"manual", label:"Manual", class:"manual", color:"var(--blue)" };
+
+  function normalizeCategory(raw){
+    let c = String(raw||"").replace(/\s+/g," ").trim().toUpperCase();
+    if(!c) return "MKT";
+    // normaliza variantes comunes de bloqueo
+    if(["BLOQUEADA","BLOQUEADAS","BLOQUEADO","BLOQUEADOS","BLOCK","BLOCKED"].includes(c)) return "BLOQUEADAS";
+    return c;
+  }
+
+  function categoryLabel(cat){
+    const cfg = catConfig[cat];
+    if(cfg) return cfg.label;
+    // fallback: "MI CATEGORIA" -> "Mi categoria"
+    const pretty = String(cat||"").toLowerCase().replace(/(^|\s)([a-záéíóúñ])/g,(m,p1,p2)=>p1+p2.toUpperCase());
+    return pretty || "Manual";
+  }
 
   txtStock.value = stockText;
   if(txtMoves) txtMoves.value = movesText;
-  kTotal.textContent = String(TOTAL);
+  // kTotal se actualiza en updateKPIs() para descontar Bloqueadas
 
   // Boot
   rebuildAll();
@@ -1287,7 +1306,7 @@
   });
 
   btnAddManual.addEventListener("click", ()=>{
-    const category = selCategory.value;
+    const category = normalizeCategory(selCategory.value);
     const mode = selMode.value;
 
     let locs = [];
@@ -2438,7 +2457,7 @@
     for(const loc of catalog){
       const manualCat = manualMap.get(loc);
       if(manualCat){
-        const cfg = catConfig[manualCat] || catConfig.DOCUMENTOS;
+        const cfg = catConfig[manualCat] || DEFAULT_MANUAL_CFG;
         derived.set(loc, {
           state: cfg.state,
           qty: stockMap.get(loc)||0,
@@ -2465,18 +2484,42 @@
   }
 
   function updateKPIs(){
-    let filledStock=0, filledManual=0, empty=0;
+    let filledStock=0, filledManual=0, empty=0, blocked=0;
+
     for(const loc of catalog){
       const d = derived.get(loc);
       if(!d){ empty++; continue; }
-      if(d.state === "manual" || d.state === "reserve" || d.state === "block") filledManual++;
-      else if(d.state === "stock" || d.state === "low" || d.state === "transit") filledStock++;
-      else empty++;
+
+      if(d.state === "block"){
+        blocked++;
+        continue; // no cuenta como llena ni vacía: queda fuera del catálogo disponible
+      }
+
+      if(d.state === "manual" || d.state === "reserve"){
+        filledManual++;
+      }else if(d.state === "stock" || d.state === "low" || d.state === "transit"){
+        filledStock++;
+      }else{
+        empty++;
+      }
     }
+
+    const effectiveTotal = Math.max(0, TOTAL - blocked);
+    const effectiveEmpty = Math.max(0, effectiveTotal - filledStock - filledManual);
+
+    // KPIs principales
+    if(kTotal) kTotal.textContent = String(effectiveTotal);
+    if(kTotalSub){
+      kTotalSub.textContent = blocked>0
+        ? `90 módulos × 7 posiciones • Bloqueadas: ${blocked}`
+        : "90 módulos × 7 posiciones";
+    }
+
     kStock.textContent = String(filledStock);
     kManual.textContent = String(filledManual);
-    kEmpty.textContent = String(empty);
-    const occ = ((filledStock + filledManual) / TOTAL) * 100;
+    kEmpty.textContent = String(effectiveEmpty);
+
+    const occ = effectiveTotal>0 ? ((filledStock + filledManual) / effectiveTotal) * 100 : 0;
     kOcc.textContent = occ.toFixed(1) + "%";
 
     const t = state?.transitory || {units:0, need:0, allocated:0};
@@ -2514,11 +2557,11 @@
       return;
     }
     for(const o of manualOverrides){
-      const cfg = catConfig[o.category] || catConfig.DOCUMENTOS;
+      const cfg = catConfig[o.category] || DEFAULT_MANUAL_CFG;
       const typeLabel = o.type==="module" ? "Módulo" : "Rango";
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td><span class="tag"><span class="sw" style="background:${cfg.color}"></span>${cfg.label}</span></td>
+        <td><span class="tag"><span class="sw" style="background:${cfg.color}"></span>${categoryLabel(o.category)}</span></td>
         <td style="font-weight:900;color:var(--muted)">${typeLabel}</td>
         <td style="font-family:ui-monospace,Menlo,Consolas; font-weight:800;">${o.from}</td>
         <td style="font-family:ui-monospace,Menlo,Consolas; font-weight:800;">${o.to}</td>
@@ -2936,9 +2979,9 @@
 
     const sortedCats = Array.from(c.manualCounts.entries()).sort((a,b)=>b[1]-a[1]);
     for(const [cat, val] of sortedCats){
-      if(cat==="BLOQUEADO") continue;
-      const cfg = catConfig[cat] || { label: cat, color: "var(--blue)" };
-      rows.push({ key:cat, label: cfg.label || cat, value: val, color: cfg.color || "var(--blue)" });
+      if(cat==="BLOQUEADAS") continue;
+      const cfg = catConfig[cat] || DEFAULT_MANUAL_CFG;
+      rows.push({ key:cat, label: categoryLabel(cat), value: val, color: cfg.color || "var(--blue)" });
     }
 
     tblPallets.innerHTML = rows.map(r=>`<tr><td>${r.label}</td><td style="text-align:right;"><strong>${r.value}</strong></td></tr>`).join("");
