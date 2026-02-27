@@ -3315,7 +3315,7 @@ let stockMap = new Map();
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getFirestore, doc, setDoc, getDoc, getDocs, collection, query, where, orderBy, serverTimestamp, writeBatch, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-  import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyBBrLGNfBdKiFdrn4VBpuzB2ZkOf_EbjpI",
@@ -3336,8 +3336,48 @@ let stockMap = new Map();
   async function ensureAuth(){
     // Solo pedimos login cuando necesitas escribir.
     if(auth.currentUser) return auth.currentUser;
-    const res = await signInWithPopup(auth, authProvider);
-    return res.user;
+
+    // Si vienes de un redirect previo, intenta recuperar sesión primero
+    try{
+      const rr = await getRedirectResult(auth);
+      if(rr && rr.user) return rr.user;
+    }catch(e){
+      // ignore
+    }
+
+    try{
+      const res = await signInWithPopup(auth, authProvider);
+      return res.user;
+    }catch(e){
+      const code = (e && e.code) ? e.code : "";
+      console.warn("Auth error:", code, e);
+
+      if(code === "auth/unauthorized-domain"){
+        alert("⚠️ Firebase Auth bloqueó el dominio.
+
+Ve a Firebase Console → Authentication → Configuración → Dominios autorizados y agrega:
+
+- kevinsuarezoriflame.github.io
+
+Luego recarga e intenta de nuevo.");
+        throw e;
+      }
+
+      // Popups bloqueados o cerrados → usamos redirect como fallback
+      if(code === "auth/popup-blocked" || code === "auth/popup-closed-by-user"){
+        alert("🔐 Para guardar en la nube necesito iniciar sesión con Google.
+
+Se abrirá una pantalla de inicio de sesión (redirect). Al volver, presiona Guardar nuevamente.");
+        await signInWithRedirect(auth, authProvider);
+        throw e;
+      }
+
+      alert("❌ No se pudo iniciar sesión para guardar en la nube.
+
+Detalle: " + (code || "error") + "
+Revisa conexión / reglas.");
+      throw e;
+    }
   }
 
   // Debug/visibilidad en consola (no altera UI)
@@ -3539,6 +3579,7 @@ let stockMap = new Map();
   }
 
   async function saveTextAsChunks(dsId, type, text){
+    await ensureAuth();
     const chunks = splitChunks(text);
     const blobsRef = collection(db, DS_COL, dsId, DS_BLOBS);
 
@@ -3597,6 +3638,7 @@ let stockMap = new Map();
   }
 
   async function saveManualOverrides(dsId, overrides){
+    await ensureAuth();
     await setDoc(doc(db, DS_COL, dsId, ...DS_STATE_DOC.split("/")), {
       dsId,
       manualOverrides: Array.isArray(overrides) ? overrides : [],
