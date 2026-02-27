@@ -756,6 +756,9 @@
 
           <div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;">
             <button class="btn primary" id="btnProcess">Procesar / Actualizar</button>
+            <button class="btn sm" id="btnCloudSave" title="Guarda stock, movimientos y manuales en la nube">☁ Guardar nube</button>
+            <button class="btn sm" id="btnCloudLoad" title="Carga el último estado compartido desde la nube">☁ Cargar nube</button>
+            <span class="sub" id="cloudStatus" style="align-self:center; font-weight:800; color:var(--muted);">Nube: —</span>
             <button class="btn" id="btnGotoLayout">Ir al Layout</button>
           </div>
         </div>
@@ -1171,7 +1174,16 @@
 
   let manualOverrides = loadManual();
 
-  let stockMap = new Map();
+  
+
+  // 🔗 Bridge para módulos (Firebase) - permite leer/escribir manualOverrides desde <script type="module">
+  window.__CT_getManualOverrides = () => manualOverrides;
+  window.__CT_setManualOverrides = (arr) => {
+    manualOverrides = Array.isArray(arr) ? arr : [];
+    try{ saveManual(); }catch(e){}
+    try{ renderManualTable(); }catch(e){}
+  };
+let stockMap = new Map();
   let stockItemsMap = new Map();
   let packLocSet = new Set();
   let stockRowsParsed = [];
@@ -3302,7 +3314,7 @@
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getFirestore, doc, setDoc, getDocs, collection, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { getFirestore, doc, setDoc, getDoc, getDocs, collection, query, where, orderBy, serverTimestamp, writeBatch, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyBBrLGNfBdKiFdrn4VBpuzB2ZkOf_EbjpI",
@@ -3468,6 +3480,207 @@
       }
     });
   }
+
+
+  // === Colaborativo FULL (Firestore) ===
+  // Guarda/lee el ESTADO compartido (stock pegado, movimientos pegados y overrides manuales) por mes: ds=YYYY-MM
+  const DS_COL = "datasets";
+  const DS_STATE_DOC = "state/current";
+  const DS_MANIFEST_DOC = "state/manifest";
+  const DS_BLOBS = "blobs";
+  const MAX_CHUNK = 180000; // chars por doc (seguro bajo el límite)
+
+  function pad2(n){ return String(n).padStart(2,"0"); }
+  function monthId(d=new Date()){ return `${d.getFullYear()}-${pad2(d.getMonth()+1)}`; }
+
+  function getClientId(){
+    const k="capacityTools_clientId_v1";
+    let v = localStorage.getItem(k);
+    if(!v){
+      v = "ct_" + Math.random().toString(16).slice(2) + "_" + Date.now().toString(16);
+      localStorage.setItem(k, v);
+    }
+    return v;
+  }
+
+  function getDatasetId(){
+    const sp = new URLSearchParams(location.search);
+    const ds = sp.get("ds");
+    if(ds && /^\d{4}-\d{2}$/.test(ds)) return ds;
+    return monthId(); // default: mes actual del equipo
+  }
+
+  function splitChunks(text){
+    const t = String(text||"");
+    const out = [];
+    for(let i=0;i<t.length;i+=MAX_CHUNK){
+      out.push(t.slice(i, i+MAX_CHUNK));
+    }
+    return out.length ? out : [""];
+  }
+
+  async function saveTextAsChunks(dsId, type, text){
+    const chunks = splitChunks(text);
+    const blobsRef = collection(db, DS_COL, dsId, DS_BLOBS);
+
+    // Lee existentes para borrar sobrantes si la nueva versión trae menos chunks
+    const qOld = query(blobsRef, where("type","==", type), orderBy("i","asc"));
+    const oldSnap = await getDocs(qOld);
+    const oldCount = oldSnap.size;
+
+    const batch = writeBatch(db);
+
+    for(let i=0;i<chunks.length;i++){
+      const id = `${type}_${String(i).padStart(3,"0")}`;
+      batch.set(doc(db, DS_COL, dsId, DS_BLOBS, id), {
+        type, i, data: chunks[i],
+        updatedAt: serverTimestamp()
+      }, { merge:true });
+    }
+
+    // borra chunks sobrantes
+    for(let i=chunks.length;i<oldCount;i++){
+      const id = `${type}_${String(i).padStart(3,"0")}`;
+      batch.delete(doc(db, DS_COL, dsId, DS_BLOBS, id));
+    }
+
+    // actualiza manifest
+    batch.set(doc(db, DS_COL, dsId, ...DS_MANIFEST_DOC.split("/")), {
+      dsId,
+      [`${type}Chunks`]: chunks.length,
+      updatedAt: serverTimestamp(),
+      updatedBy: getClientId()
+    }, { merge:true });
+
+    await batch.commit();
+  }
+
+  async function loadTextFromChunks(dsId, type){
+    const manRef = doc(db, DS_COL, dsId, ...DS_MANIFEST_DOC.split("/"));
+    const manSnap = await getDoc(manRef);
+    const man = manSnap.exists() ? manSnap.data() : {};
+    const n = Number(man[`${type}Chunks`] || 0);
+
+    if(!n){
+      // fallback: intenta traer todos los chunks por query
+      const qy = query(collection(db, DS_COL, dsId, DS_BLOBS), where("type","==", type), orderBy("i","asc"));
+      const snap = await getDocs(qy);
+      return snap.docs.map(d=>d.data()?.data||"").join("");
+    }
+
+    const parts = [];
+    for(let i=0;i<n;i++){
+      const id = `${type}_${String(i).padStart(3,"0")}`;
+      const s = await getDoc(doc(db, DS_COL, dsId, DS_BLOBS, id));
+      if(s.exists()) parts.push(String(s.data()?.data||""));
+    }
+    return parts.join("");
+  }
+
+  async function saveManualOverrides(dsId, overrides){
+    await setDoc(doc(db, DS_COL, dsId, ...DS_STATE_DOC.split("/")), {
+      dsId,
+      manualOverrides: Array.isArray(overrides) ? overrides : [],
+      updatedAt: serverTimestamp(),
+      updatedBy: getClientId()
+    }, { merge:true });
+  }
+
+  async function loadManualOverrides(dsId){
+    const snap = await getDoc(doc(db, DS_COL, dsId, ...DS_STATE_DOC.split("/")));
+    if(!snap.exists()) return [];
+    const d = snap.data() || {};
+    return Array.isArray(d.manualOverrides) ? d.manualOverrides : [];
+  }
+
+  async function cloudSaveAll(){
+    const dsId = getDatasetId();
+    const txtStock = document.getElementById("txtStock");
+    const txtMoves = document.getElementById("txtMoves");
+    const overrides = (window.__CT_getManualOverrides ? window.__CT_getManualOverrides() : []);
+
+    const stock = txtStock ? txtStock.value : "";
+    const moves = txtMoves ? txtMoves.value : "";
+
+    // Guardar
+    await saveTextAsChunks(dsId, "stock", stock);
+    await saveTextAsChunks(dsId, "moves", moves);
+    await saveManualOverrides(dsId, overrides);
+
+    // UI feedback
+    const cs = document.getElementById("cloudStatus");
+    if(cs) cs.textContent = `Nube: ${dsId} • guardado ✅`;
+    return dsId;
+  }
+
+  async function cloudLoadAll(){
+    const dsId = getDatasetId();
+
+    const stock = await loadTextFromChunks(dsId, "stock");
+    const moves = await loadTextFromChunks(dsId, "moves");
+    const overrides = await loadManualOverrides(dsId);
+
+    const txtStock = document.getElementById("txtStock");
+    const txtMoves = document.getElementById("txtMoves");
+    if(txtStock) txtStock.value = stock || "";
+    if(txtMoves) txtMoves.value = moves || "";
+
+    if(window.__CT_setManualOverrides) window.__CT_setManualOverrides(overrides);
+
+    // Procesar automáticamente para que todos vean resultados iguales
+    const btnProcess = document.getElementById("btnProcess");
+    if(btnProcess) btnProcess.click();
+
+    const cs = document.getElementById("cloudStatus");
+    if(cs) cs.textContent = `Nube: ${dsId} • cargado ✅`;
+    return dsId;
+  }
+
+  function setupCloudUI(){
+    const btnSave = document.getElementById("btnCloudSave");
+    const btnLoad = document.getElementById("btnCloudLoad");
+    const cs = document.getElementById("cloudStatus");
+    const dsId = getDatasetId();
+    if(cs) cs.textContent = `Nube: ${dsId}`;
+
+    if(btnSave){
+      btnSave.addEventListener("click", async ()=>{
+        btnSave.disabled = true;
+        try{ await cloudSaveAll(); }
+        catch(e){
+          console.error(e);
+          alert("❌ No se pudo guardar en la nube. Revisa Firestore Rules / conexión.");
+        } finally { btnSave.disabled = false; }
+      });
+    }
+
+    if(btnLoad){
+      btnLoad.addEventListener("click", async ()=>{
+        btnLoad.disabled = true;
+        try{ await cloudLoadAll(); }
+        catch(e){
+          console.error(e);
+          alert("❌ No se pudo cargar desde la nube. Revisa si existe data para ese mes.");
+        } finally { btnLoad.disabled = false; }
+      });
+    }
+
+    // Aviso de cambios (sin pisarte lo que estés pegando)
+    const manRef = doc(db, DS_COL, dsId, ...DS_MANIFEST_DOC.split("/"));
+    onSnapshot(manRef, (snap)=>{
+      if(!snap.exists()) return;
+      const d = snap.data() || {};
+      const who = d.updatedBy ? ` • ${String(d.updatedBy).slice(0,8)}` : "";
+      if(cs) cs.textContent = `Nube: ${dsId} • actualizado${who}`;
+    });
+  }
+
+  // Inicializar UI colaborativa
+  try{ setupCloudUI(); }catch(e){ console.warn("Cloud UI init:", e); }
+
+  // Exponer helpers por si los necesitas luego
+  window.cloudDS = { getDatasetId, cloudSaveAll, cloudLoadAll };
+
 </script>
 </body>
 </html>
