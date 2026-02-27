@@ -2337,6 +2337,16 @@ function parseMoves(text){
       alert("No se encontró la tabla para exportar.");
       return;
     }
+
+    // Clonar tabla y reemplazar valores formateados por valores crudos cuando existan
+    const clone = table.cloneNode(true);
+    clone.querySelectorAll("[data-raw]").forEach(el=>{
+      const raw = el.getAttribute("data-raw");
+      if(raw !== null && raw !== undefined){
+        el.textContent = String(raw);
+      }
+    });
+
     const html = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office"
             xmlns:x="urn:schemas-microsoft-com:office:excel"
@@ -2348,7 +2358,7 @@ function parseMoves(text){
             <x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
           </x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
         </head>
-        <body>${table.outerHTML}</body>
+        <body>${clone.outerHTML}</body>
       </html>
     `;
     const blob = new Blob([html], {type:"application/vnd.ms-excel;charset=utf-8"});
@@ -2360,6 +2370,7 @@ function parseMoves(text){
     a.remove();
     setTimeout(()=>URL.revokeObjectURL(a.href), 1500);
   }
+
 
 function showInboundDetail(title, monthLabelText, rows){
     const bar = document.getElementById("activeKpiBar");
@@ -2443,7 +2454,7 @@ function showInboundDetail(title, monthLabelText, rows){
           <td>${escapeHtml(un)}</td>
           <td>${escapeHtml(fr)}</td>
           <td>${escapeHtml(to)}</td>
-          <td style="text-align:right;">${qty}</td>
+          <td style="text-align:right;" data-raw="${qtyNum}">${qty}</td>
           <td>${escapeHtml(fo)}</td>
         </tr>
       `;
