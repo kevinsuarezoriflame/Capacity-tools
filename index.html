@@ -2329,7 +2329,39 @@ function parseMoves(text){
     };
   }
 
-  function showInboundDetail(title, monthLabelText, rows){
+  
+  // === Exportar tabla a Excel (HTML .xls compatible) ===
+  function exportTableToExcel(tableId, filename){
+    const table = document.getElementById(tableId);
+    if(!table){
+      alert("No se encontró la tabla para exportar.");
+      return;
+    }
+    const html = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office"
+            xmlns:x="urn:schemas-microsoft-com:office:excel"
+            xmlns="http://www.w3.org/TR/REC-html40">
+        <head>
+          <meta charset="UTF-8">
+          <!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>
+            <x:Name>Detalle</x:Name>
+            <x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
+          </x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
+        </head>
+        <body>${table.outerHTML}</body>
+      </html>
+    `;
+    const blob = new Blob([html], {type:"application/vnd.ms-excel;charset=utf-8"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = (filename || "detalle") + ".xls";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 1500);
+  }
+
+function showInboundDetail(title, monthLabelText, rows){
     const bar = document.getElementById("activeKpiBar");
     if(bar){
       const lines = rows ? rows.length : 0;
@@ -2358,6 +2390,9 @@ function parseMoves(text){
           <div>
             <h3 id="ioDetailTitle" style="margin:0;font-size:16px;">Detalle</h3>
             <div id="ioDetailMeta" style="margin-top:6px;color:var(--muted);font-size:12.5px;"></div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <button type="button" class="btn sm" id="btnExportIoDetailExcel">Exportar detalle (Excel)</button>
           </div>
         </div>
         <div class="card-body" style="overflow:auto;">
@@ -2413,6 +2448,17 @@ function parseMoves(text){
         </tr>
       `;
     }).join("");
+
+
+    // Exportación del detalle actual
+    const btnX = document.getElementById("btnExportIoDetailExcel");
+    if(btnX){
+      btnX.onclick = ()=>{
+        const safeMonth = (monthLabelText || "mes").replace(/[^\w\-]+/g,"_");
+        const safeTitle = (title || "detalle").replace(/[^\w\-]+/g,"_");
+        exportTableToExcel("ioDetailTable", `${safeTitle}_${safeMonth}`);
+      };
+    }
 
     host.scrollIntoView({behavior:"smooth", block:"start"});
   }
