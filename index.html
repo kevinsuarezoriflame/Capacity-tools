@@ -3315,6 +3315,7 @@ let stockMap = new Map();
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getFirestore, doc, setDoc, getDoc, getDocs, collection, query, where, orderBy, serverTimestamp, writeBatch, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyBBrLGNfBdKiFdrn4VBpuzB2ZkOf_EbjpI",
@@ -3328,6 +3329,23 @@ let stockMap = new Map();
   const app = initializeApp(firebaseConfig);
   const db  = getFirestore(app);
 
+  // === AUTH (solo para escrituras) ===
+  const auth = getAuth(app);
+  const authProvider = new GoogleAuthProvider();
+
+  async function ensureAuth(){
+    // Solo pedimos login cuando necesitas escribir.
+    if(auth.currentUser) return auth.currentUser;
+    const res = await signInWithPopup(auth, authProvider);
+    return res.user;
+  }
+
+  // Debug/visibilidad en consola (no altera UI)
+  onAuthStateChanged(auth, (u)=>{
+    if(u) console.log("✅ Auth:", u.email);
+  });
+
+
   const COL = "ocupacion_diaria"; // docs: YYYY-MM-DD
 
   function todayStr(){
@@ -3339,6 +3357,7 @@ let stockMap = new Map();
   }
 
   async function saveToday(pct, palletsUsed){
+    await ensureAuth();
     const date = todayStr();
     await setDoc(doc(db, COL, date), {
       date,
@@ -3594,6 +3613,7 @@ let stockMap = new Map();
   }
 
   async function cloudSaveAll(){
+    await ensureAuth();
     const dsId = getDatasetId();
     const txtStock = document.getElementById("txtStock");
     const txtMoves = document.getElementById("txtMoves");
