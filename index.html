@@ -1706,7 +1706,48 @@ let stockMap = new Map();
     }
   }
 
-  function parseMoves(text){
+  
+  // Parse números con separadores locales (ej: 8.680 / 868,0 / 1,234.56)
+  function parseNumberSmart(val){
+    let s = String(val ?? "").trim();
+    if(!s) return NaN;
+    s = s.replace(/\s+/g, "");
+    // deja solo dígitos y separadores
+    s = s.replace(/[^0-9,.-]/g, "");
+
+    const hasComma = s.includes(",");
+    const hasDot = s.includes(".");
+
+    if(hasComma && hasDot){
+      // el último separador suele ser el decimal
+      if(s.lastIndexOf(",") > s.lastIndexOf(".")){
+        // coma decimal, puntos miles
+        s = s.replace(/\./g, "");
+        s = s.replace(",", ".");
+      } else {
+        // punto decimal, comas miles
+        s = s.replace(/,/g, "");
+      }
+    } else if(hasComma && !hasDot){
+      const parts = s.split(",");
+      // si no es miles (3 dígitos), asume coma decimal
+      if(parts.length === 2 && parts[1].length !== 3){
+        s = parts[0].replace(/\./g, "") + "." + parts[1];
+      } else {
+        s = s.replace(/,/g, "");
+      }
+    } else if(hasDot && !hasComma){
+      const parts = s.split(".");
+      // si tiene un punto y 3 dígitos al final, asume miles
+      if(parts.length === 2 && parts[1].length === 3){
+        s = parts[0] + parts[1];
+      }
+    }
+    const n = Number(s);
+    return Number.isFinite(n) ? n : NaN;
+  }
+
+function parseMoves(text){
     movesRowsParsed = [];
     movesByMonth = new Map();
     movesMonths = [];
@@ -1760,9 +1801,8 @@ let stockMap = new Map();
       const from = (idxFrom!==-1 ? cols[idxFrom] : "");
       const to   = (idxTo!==-1 ? cols[idxTo] : "");
       let qtyRaw = (idxQty!==-1 ? cols[idxQty] : "");
-      qtyRaw = String(qtyRaw||"").replace(/[^\d.-]/g,"");
-      const qty = Number(qtyRaw);
-      const q = Number.isFinite(qty) ? qty : 0;
+      const qty = parseNumberSmart(qtyRaw);
+      const q = Number.isFinite(qty) ? Math.round(qty) : 0;
       const order = (idxOrder!==-1 ? cols[idxOrder] : "");
 
       const dt = parseAnyDate(dateRaw);
