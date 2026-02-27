@@ -85,6 +85,17 @@
       font-weight:800;
       font-size:12.5px;
     }
+    .btn.xs{
+      padding:4px 8px;
+      border-radius: 999px;
+      font-weight:800;
+      font-size:11px;
+    }
+    .btn.xs.active{
+      background: var(--teal);
+      border-color: var(--teal);
+      color: #fff;
+    }
 
     .tabs{
       display:flex; gap:8px; align-items:center;
@@ -1951,6 +1962,42 @@
     };
   }
 
+  // ✅ Quincenas para facturación: 1era 15na y 2da 15na (solo para Bulk units - inbound)
+  function computeImportUnitsByDayRange(rows, dayFrom, dayTo){
+    let air=0, sea=0;
+
+    // mismas reglas inbound (excluye TO)
+    const EXCL_INBOUND_TO = ["pl","d_picking","procesos_cw","cyclecount","return"];
+    function isExcludedInboundTo(toL){
+      toL = (toL||"").toLowerCase().trim();
+      return EXCL_INBOUND_TO.some(k => toL === k || toL.includes(k));
+    }
+
+    for(const r of rows){
+      if(!r || !r.dt) continue;
+      const d = r.dt.getDate();
+      if(d < dayFrom || d > dayTo) continue;
+
+      const fromL = String(r.from||"").toLowerCase();
+      const toL   = String(r.to||"").toLowerCase();
+      const desc  = String(r.desc||"").toLowerCase();
+
+      const inbound = fromL.includes("inbound");
+      if(!inbound) continue;
+      if(isExcludedInboundTo(r.to)) continue;
+
+      // quincena solo aplica a importUnits (AIR + Contenedor); excluye Compra Local y Armados
+      if(toL.includes("compra local")) continue;
+      if(toL.includes("armados_cw") || toL.includes("armados cw") || toL.includes("armados")) continue;
+
+      if(desc.includes("air")) air += (Number(r.qty)||0);
+      else sea += (Number(r.qty)||0);
+    }
+
+    return air + sea;
+  }
+
+
   function renderInboundOutbound(){
     const selMonth = document.getElementById("selMonth");
     const kpisWrap = document.getElementById("kpisInbound");
@@ -1978,6 +2025,10 @@
     }
 
     const m = computeIOMetrics(rows, monthKey);
+
+    // quincenas (para facturación): dentro del mes seleccionado
+    const q1Import = computeImportUnitsByDayRange(rows, 1, 15);
+    const q2Import = computeImportUnitsByDayRange(rows, 16, 31);
 
     const kpis = [
       { id:"in_air", label:"✈️ Unidades Importación (AIR)", value: m.air, sub:"From=inbound & Description contiene AIR", detailKey:"inbound_air" },
@@ -2022,6 +2073,8 @@
 
       // ✅ Botón “Gráfico” dentro del KPI Bulk units - outbound
       const hasChart = k.id === "bulk_units_out";
+      // ✅ Botones por quincena dentro del KPI Bulk units - inbound
+      const hasQuincena = k.id === "bulk_units_in";
       div.innerHTML = `
         <div class="kpiTop"></div>
         ${hasChart ? `
@@ -2035,6 +2088,12 @@
           </div>
           <div class="value" style="margin-top:10px;">${fmtInt(k.value)}</div>
           <div class="sub" style="margin-top:6px;">${escapeHtml(k.sub||"")}</div>
+          ${hasQuincena ? `
+            <div class="kpiQuincena" style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+              <button type="button" class="btn xs" data-q="q1">1era 15na</button>
+              <button type="button" class="btn xs" data-q="q2">2da 15na</button>
+            </div>
+          ` : ``}
         </div>
       `;
 
@@ -2046,6 +2105,53 @@
             openOutboundModal(monthKey, rows);
           };
         }
+      }
+
+      if(hasQuincena){
+        const b1 = div.querySelector('button[data-q="q1"]');
+        const b2 = div.querySelector('button[data-q="q2"]');
+        const valEl = div.querySelector(".value");
+        const subEl = div.querySelector(".sub");
+
+        // valor total (default)
+        const total = Number(k.value)||0;
+        const v1 = Number(q1Import)||0;
+        const v2 = Number(q2Import)||0;
+
+        function setMode(mode){
+          // mode: "total" | "q1" | "q2"
+          if(!valEl) return;
+          if(mode==="q1"){
+            valEl.textContent = fmtInt(v1);
+            if(subEl) subEl.textContent = "AIR + Contenedor • 1era 15na";
+            b1 && b1.classList.add("active");
+            b2 && b2.classList.remove("active");
+            div.dataset.quincena = "q1";
+          }else if(mode==="q2"){
+            valEl.textContent = fmtInt(v2);
+            if(subEl) subEl.textContent = "AIR + Contenedor • 2da 15na";
+            b2 && b2.classList.add("active");
+            b1 && b1.classList.remove("active");
+            div.dataset.quincena = "q2";
+          }else{
+            valEl.textContent = fmtInt(total);
+            if(subEl) subEl.textContent = escapeHtml(k.sub||"");
+            b1 && b1.classList.remove("active");
+            b2 && b2.classList.remove("active");
+            div.dataset.quincena = "total";
+          }
+        }
+        setMode("total");
+
+        const safeClick = (mode)=> (ev)=>{
+          ev.stopPropagation();
+          // toggle: si ya está activo, vuelve a total
+          const cur = div.dataset.quincena || "total";
+          if(cur===mode) setMode("total");
+          else setMode(mode);
+        };
+        if(b1) b1.onclick = safeClick("q1");
+        if(b2) b2.onclick = safeClick("q2");
       }
 
       if(clickable){
@@ -2253,6 +2359,10 @@
   function openOutboundModal(monthKey, rows){
     if(!modalOutbound || !canvasOutbound) return;
     const m = computeIOMetrics(rows, monthKey);
+
+    // quincenas (para facturación): dentro del mes seleccionado
+    const q1Import = computeImportUnitsByDayRange(rows, 1, 15);
+    const q2Import = computeImportUnitsByDayRange(rows, 16, 31);
     const outRows = m.det.outbound_pl || [];
     const series = groupOutboundByDay(outRows);
 
