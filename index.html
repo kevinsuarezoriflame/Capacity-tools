@@ -2171,7 +2171,17 @@ let stockMap = new Map();
           const key = k.detailKey;
           let rowsToShow = [];
           if(key==="inbound_import_all"){
-            rowsToShow = [...m.det.inbound_air, ...m.det.inbound_sea];
+            // Detalle de Bulk units - inbound: por requerimiento se muestra 2da 15na por defecto
+            const qMode = (div.dataset.quincena || "total"); // total|q1|q2
+            const all = [...m.det.inbound_air, ...m.det.inbound_sea];
+
+            // Si el KPI está en modo quincena, respeta el modo; si está en total, muestra 2da 15na por defecto
+            const effective = (qMode==="q1" || qMode==="q2") ? qMode : "q2";
+            rowsToShow = all.filter(r=>{
+              if(!r || !r.dt) return false;
+              const d = r.dt.getDate();
+              return effective==="q1" ? (d>=1 && d<=15) : (d>=16 && d<=31);
+            });
           }else{
             rowsToShow = m.det[key] || [];
           }
