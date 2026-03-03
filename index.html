@@ -1,9 +1,9 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Oriflame | Firebase Debug + Datasets</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Capacity Tools</title>
   <style>
     :root{
       --bg:#eaf6f4;
@@ -12,450 +12,3844 @@
       --text:#0f172a;
       --muted:#64748b;
       --border:#cfe9e4;
+
       --green:#22c55e;
-      --red:#ef4444;
+      --orange:#fb923c;
+      --violet: #a855f7;
+      --gray:#cbd5e1;
       --blue:#3b82f6;
+      --red:#ef4444;
+      --teal:#12b9b2;
       --amber:#f59e0b;
+
+      --shadow: 0 10px 24px rgba(15, 23, 42, .10);
+      --radius: 16px;
     }
-    *{box-sizing:border-box}
+
+    *{ box-sizing:border-box; }
     body{
       margin:0;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      background: radial-gradient(1200px 600px at 20% 10%, #d8f3ee 0%, transparent 55%),
-                  radial-gradient(900px 500px at 90% 20%, #e8f7ff 0%, transparent 55%),
-                  var(--bg);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      background: radial-gradient(1200px 700px at 30% 0%, #f7fbfb 0%, var(--bg) 60%) fixed;
       color:var(--text);
     }
-    .wrap{max-width:1100px;margin:24px auto;padding:0 16px}
+
     .topbar{
-      display:flex;gap:12px;align-items:center;justify-content:space-between;
-      padding:14px 16px;border:1px solid var(--border);border-radius:16px;
-      background:var(--card);backdrop-filter: blur(8px);
+      position: sticky; top:0; z-index:50;
+      display:flex; align-items:center; justify-content:space-between;
+      gap:12px;
+      padding:12px 16px;
+      background: #ffffffd9;
+      backdrop-filter: blur(10px);
+      border-bottom:1px solid var(--border);
     }
-    .title{display:flex;flex-direction:column;gap:2px}
-    .title h1{margin:0;font-size:18px}
-    .title p{margin:0;color:var(--muted);font-size:13px}
-    .grid{display:grid;grid-template-columns: 1fr 1fr;gap:14px;margin-top:14px}
-    @media (max-width: 900px){ .grid{grid-template-columns:1fr} }
+    .brand{
+      display:flex; align-items:center; gap:10px;
+      font-weight:800;
+      letter-spacing:.2px;
+    }
+    .brand .dot{
+      width:12px; height:12px; border-radius:50%;
+      background: linear-gradient(135deg, #12b9b2, #22c55e);
+      box-shadow: 0 0 0 4px rgba(34,197,94,.12);
+    }
+    .top-actions{ display:flex; align-items:center; gap:10px; }
+    .btn{
+      border:1px solid var(--border);
+      background:#fff;
+      padding:8px 12px;
+      border-radius: 12px;
+      cursor:pointer;
+      font-weight:600;
+      color:var(--text);
+      box-shadow: 0 6px 14px rgba(15, 23, 42, .06);
+    }
+    .btn:hover{ filter: brightness(.98); }
+    .btn.primary{
+      border-color:#bfece7;
+      background: linear-gradient(135deg, #e9fffb, #ffffff);
+    }
+    .btn.danger{
+      border-color:#fecaca;
+      background:#fff5f5;
+      color:#991b1b;
+    }
+    .btn.ghost{
+      border-color:#e2e8f0;
+      background:#f8fafc;
+      color:#0f172a;
+    }
+    .btn.sm{
+      padding:6px 10px;
+      border-radius: 999px;
+      font-weight:800;
+      font-size:12.5px;
+    }
+    .btn.xs{
+      padding:4px 8px;
+      border-radius: 999px;
+      font-weight:800;
+      font-size:11px;
+    }
+    .btn.xs.active{
+      background: var(--teal);
+      border-color: var(--teal);
+      color: #fff;
+    }
+
+    .tabs{
+      display:flex; gap:8px; align-items:center;
+    }
+    .tab{
+      padding:8px 12px;
+      border-radius: 999px;
+      border:1px solid var(--border);
+      background:#fff;
+      cursor:pointer;
+      font-weight:700;
+      color:var(--muted);
+    }
+    .tab.active{
+      color:var(--text);
+      border-color:#bfece7;
+      background: linear-gradient(135deg, #e9fffb, #ffffff);
+    }
+
+    .container{ max-width: 1100px; margin: 0 auto; padding: 16px; }
+    .grid{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:14px;
+    }
 
     .card{
-      padding:14px 14px;border:1px solid var(--border);border-radius:16px;
-      background:var(--card2);backdrop-filter: blur(8px);
-    }
-    .card h2{margin:0 0 10px 0;font-size:16px}
-    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-    .row > *{flex:0 0 auto}
-    label{font-size:12px;color:var(--muted)}
-    input, select, textarea{
+      background: var(--card2);
       border:1px solid var(--border);
-      border-radius:12px;
-      padding:10px 12px;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    .card-header{
+      padding:14px 16px;
+      border-bottom:1px solid var(--border);
+      display:flex; align-items:flex-start; justify-content:space-between; gap:12px;
+    }
+    .card-header h3{ margin:0; font-size:16px; }
+    .card-header p{ margin:6px 0 0; color:var(--muted); font-size:12.5px; line-height:1.25rem; }
+    .card-body{ padding:14px 16px; }
+
+    .kpis{display:grid;grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));gap:12px;}
+    .kpi{
+      padding:14px;
+      border-radius: 14px;
+      border:1px solid var(--border);
       background:#fff;
-      outline:none;
-      min-height:40px;
-      font-size:14px;
+      box-shadow: 0 6px 14px rgba(15, 23, 42, .05);
     }
-    textarea{width:100%;min-height:120px;resize:vertical}
-    .btn{
-      border:0;border-radius:12px;padding:10px 12px;min-height:40px;
-      cursor:pointer;font-weight:600;
-      box-shadow: 0 8px 18px rgba(2,6,23,.08);
+    .kpi .label{ color:var(--muted); font-size:12px; font-weight:700; }
+    .kpi .value{ font-size:28px; font-weight:900; margin-top:6px; letter-spacing:-.6px; }
+    .kpi .sub{ color:var(--muted); font-size:12px; margin-top:4px; }
+
+    .minimap{
+      display:flex; align-items:center; gap:10px;
     }
-    .btn.blue{background:var(--blue);color:white}
-    .btn.green{background:var(--green);color:white}
-    .btn.red{background:var(--red);color:white}
-    .btn.amber{background:var(--amber);color:#111827}
-    .btn.ghost{background:#fff;color:#0f172a;border:1px solid var(--border);box-shadow:none}
+    .minimap-bar{
+      flex:1;
+      display:grid;
+      grid-template-columns: repeat(90, 1fr);
+      gap:2px;
+      padding:8px;
+      border:1px solid var(--border);
+      border-radius: 14px;
+      background:#fff;
+      overflow:hidden;
+    }
+    .mini{
+      height:10px;
+      border-radius: 3px;
+      background: var(--gray);
+      cursor:pointer;
+      position:relative;
+    }
+    .mini:hover{ outline:2px solid rgba(59,130,246,.25); outline-offset:2px; }
+    .minimap-legend{
+      display:flex; gap:10px; flex-wrap:wrap;
+      color:var(--muted); font-size:12px; font-weight:700;
+    }
     .pill{
-      display:inline-flex;gap:8px;align-items:center;
-      padding:8px 10px;border-radius:999px;border:1px solid var(--border);
-      background:#fff;font-size:12px;color:var(--muted);
-    }
-    .statusDot{width:10px;height:10px;border-radius:999px;background:#94a3b8}
-    .ok{background:var(--green)!important}
-    .bad{background:var(--red)!important}
-    .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}
-    .log{
-      width:100%;
-      border:1px dashed var(--border);
-      background:#0b1220;
-      color:#d1e7ff;
-      border-radius:14px;
-      padding:10px;
-      min-height:180px;
-      font-size:12px;
-      overflow:auto;
-      white-space:pre-wrap;
-    }
-    .hint{color:var(--muted);font-size:12px;margin-top:6px}
-    .kpi{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
-    .kpi .box{
-      flex:1 1 180px;
+      display:inline-flex; align-items:center; gap:6px;
+      padding:6px 10px;
       border:1px solid var(--border);
-      border-radius:14px;
-      padding:10px 12px;
+      border-radius: 999px;
       background:#fff;
     }
-    .kpi .box b{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
-    .kpi .box span{font-weight:800}
+    .sw{ width:10px; height:10px; border-radius:3px; }
+
+    .layout-wrap{
+      display:grid;
+      grid-template-columns: 300px clamp(360px, 38vw, 480px) 300px;
+      gap:12px;
+      align-items:stretch;
+    }
+
+    .aisle-col{ display:flex; flex-direction:column; gap:10px; }
+    .aisle-searchbar{ display:flex; justify-content:center; }
+    .top-actions.collapsed{ display:none; }
+
+    .rack{
+      border:1px solid var(--border);
+      border-radius: 18px;
+      background:#ffffffcc;
+      box-shadow: 0 8px 18px rgba(15,23,42,.06);
+      overflow:hidden;
+      display:flex;
+      flex-direction:column;
+      min-height: 520px;
+    }
+    .rack-title{
+      padding:12px 12px 10px;
+      border-bottom:1px solid var(--border);
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      background: linear-gradient(180deg, #ffffff, #ffffffcc);
+    }
+    .rack-title .t1{ font-weight:900; }
+    .rack-title .t2{ font-size:12px; color:var(--muted); font-weight:800; }
+
+    .rack-list{
+      padding:10px;
+      overflow:auto;
+      max-height: 520px;
+    }
+
+    .module{
+      display:grid;
+      grid-template-columns: 54px 1fr;
+      gap:8px;
+      align-items:center;
+      padding:8px;
+      border-radius: 14px;
+      border:1px solid var(--border);
+      background:#fff;
+      margin-bottom:8px;
+      cursor:pointer;
+    }
+    .module:hover{ box-shadow: 0 10px 22px rgba(15,23,42,.08); transform: translateY(-1px); transition: .12s ease; }
+    .module .mnum{
+      font-weight:900;
+      color:#0b1220;
+      background:#f1f5f9;
+      border:1px solid #e2e8f0;
+      border-radius: 10px;
+      text-align:center;
+      padding:8px 0;
+    }
+
+    .slots{
+      display:grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap:4px;
+      align-items:center;
+    }
+    .slot{
+      height:16px;
+      border-radius: 5px;
+      background: var(--gray);
+      border:1px solid rgba(15,23,42,.08);
+      position:relative;
+    }
+    .slot.low{ background: var(--orange); }
+    .slot.full{ background: var(--green); }
+    .slot.pack{ background: var(--amber); }
+    .slot.manual{ background: var(--blue); }
+    .slot.block{ background: var(--red); }
+    .slot.reserve{ background: var(--teal); }
+    .slot.transit{ background: var(--violet); }
+
+    .slot:hover::after{
+      content: attr(data-tip);
+      position:absolute;
+      left:50%; transform: translateX(-50%);
+      bottom: 22px;
+      white-space:nowrap;
+      background:#0f172a;
+      color:#fff;
+      font-size:11px;
+      padding:6px 8px;
+      border-radius: 10px;
+      box-shadow: 0 12px 26px rgba(0,0,0,.24);
+      z-index:10;
+    }
+
+    .aisle{
+      border:1px solid var(--border);
+      border-radius: 18px;
+      overflow:hidden;
+      position:relative;
+      min-height: 520px;
+      box-shadow: 0 14px 30px rgba(15,23,42,.15);
+      background-color:#0b1220;
+      background-size: cover;
+      background-position: center 45%;
+      background-image:
+        linear-gradient(180deg, rgba(0,0,0,.28), rgba(0,0,0,.10)),
+        radial-gradient(900px 520px at 50% 40%, rgba(255,255,255,.10), rgba(255,255,255,0) 55%),
+        linear-gradient(135deg, rgba(59,130,246,.18), rgba(34,197,94,.10));
+    }
+
+    .aisle .overlay{
+      position:absolute; inset:0;
+      display:flex;
+      flex-direction:column;
+      justify-content:space-between;
+      padding:12px;
+    }
+    .search{
+      display:flex; gap:8px; align-items:center;
+      background:#ffffff;
+      border:1px solid var(--border);
+      border-radius: 14px;
+      padding:10px 12px;
+      min-width: 260px;
+      box-shadow: 0 10px 22px rgba(0,0,0,.20);
+    }
+    .search input{
+      border:none; outline:none; width:100%;
+      font-weight:700;
+    }
+
+    .aisle-bottom{
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      background: rgba(255,255,255,.10);
+      border:1px solid rgba(255,255,255,.15);
+      border-radius: 14px;
+      padding:10px 12px;
+      backdrop-filter: blur(6px);
+      color:#fff;
+      box-shadow: 0 10px 22px rgba(0,0,0,.22);
+    }
+    .navbtn{
+      border:1px solid rgba(255,255,255,.18);
+      background: rgba(255,255,255,.08);
+      color:#fff;
+      font-weight:900;
+      padding:10px 12px;
+      border-radius: 12px;
+      cursor:pointer;
+    }
+    .navbtn:hover{ background: rgba(255,255,255,.14); }
+
+    .row{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:12px;
+    }
+    @media (max-width: 980px){
+      .layout-wrap{ grid-template-columns: 1fr; }
+      .rack{ min-height: auto; }
+      .rack-list{ max-height: 420px; }
+      .kpis{ grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .row{ grid-template-columns: 1fr; }
+    }
+
+    label{ display:block; font-size:12px; font-weight:900; color:var(--muted); margin-bottom:6px; }
+    input, select, textarea{
+      width:100%;
+      border:1px solid var(--border);
+      border-radius: 12px;
+      padding:10px 12px;
+      font-weight:700;
+      outline:none;
+      background:#fff;
+    }
+    textarea{ min-height: 210px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight:650; }
+    .hint{ color:var(--muted); font-size:12px; margin-top:8px; line-height:1.25rem; }
+
+    .table{
+      width:100%;
+      border-collapse:separate;
+      border-spacing:0;
+      overflow:hidden;
+      border-radius: 14px;
+      border:1px solid var(--border);
+      background:#fff;
+    }
+    .table th, .table td{
+      padding:10px 10px;
+      border-bottom:1px solid var(--border);
+      font-size:12.5px;
+      text-align:left;
+      vertical-align:top;
+    }
+    .table th{
+      background:#f8fafc;
+      font-size:12px;
+      color:var(--muted);
+      font-weight:900;
+      letter-spacing:.2px;
+    }
+    .table tr:last-child td{ border-bottom:none; }
+
+    .tbl{ width:100%; border-collapse:separate; border-spacing:0; overflow:hidden; border-radius:14px; border:1px solid var(--border); background:#fff; }
+    .tbl th, .tbl td{ padding:10px 10px; border-bottom:1px solid var(--border); font-size:12.5px; text-align:left; vertical-align:top; }
+    .tbl th{ background:#f8fafc; font-size:12px; color:var(--muted); font-weight:900; letter-spacing:.2px; }
+    .tbl tr:last-child td{ border-bottom:none; }
+    .miniTable th, .miniTable td{ padding:8px 10px; font-size:12px; }
+    .detailBox{ padding:10px 12px; border:1px dashed var(--border); border-radius:14px; background:#fbfdff; }
+    .detailTitle{ font-weight:900; color:var(--text); }
+    .muted{ color:var(--muted); font-size:12px; }
+    .tag{
+      display:inline-flex; align-items:center; gap:6px;
+      padding:6px 10px;
+      border-radius: 999px;
+      border:1px solid var(--border);
+      background:#fff;
+      font-size:12px;
+      font-weight:900;
+      color:var(--text);
+    }
+    .tag .sw{ border-radius:4px; }
+
+    .hidden{ display:none !important; }
+
+    /* Capacity Tools (vista gerencial) */
+    .capGrid{
+      display:grid;
+      grid-template-columns: 1.05fr .95fr;
+      gap:14px;
+      align-items:start;
+    }
+    @media (max-width: 980px){
+      .capGrid{ grid-template-columns: 1fr; }
+    }
+    .capCardTitle{
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+      margin:0 0 10px 0;
+      font-weight:950;
+      color:#0b1220;
+      letter-spacing:.2px;
+    }
+    .capBadge{
+      display:inline-flex; align-items:center; gap:8px;
+      padding:8px 10px;
+      border-radius:999px;
+      border:1px solid var(--border);
+      background: linear-gradient(135deg, #e9fffb, #ffffff);
+      font-weight:950;
+      color:#0b1220;
+      white-space:nowrap;
+    }
+    .capSection{
+      padding:14px;
+      background: linear-gradient(180deg, #ffffff, #ffffffcc);
+      border:1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: 0 10px 22px rgba(15,23,42,.06);
+    }
+    .capKpisRow{
+      display:grid;
+      grid-template-columns: repeat(3, minmax(160px, 1fr));
+      gap:12px;
+      margin-top:12px;
+    }
+    @media (max-width: 780px){
+      .capKpisRow{ grid-template-columns: 1fr; }
+    }
+
+    /* UI tweaks */
+    #focusLabel{display:none !important;}
+    .aisle-bottom{
+      padding:6px 10px;
+      border-radius: 14px;
+      background: rgba(0,0,0,.34);
+      border:1px solid rgba(255,255,255,.18);
+      box-shadow: 0 10px 22px rgba(0,0,0,.28);
+    }
+    .navbtn{
+      padding:8px 10px;
+      border-radius: 12px;
+      font-size: 13px;
+      background: rgba(0,0,0,.28);
+      border:1px solid rgba(255,255,255,.20);
+    }
+    .navbtn:hover{ background: rgba(0,0,0,.38); }
+    .aisle-bottom .muted{
+      color:#fff;
+      font-weight:900;
+      font-size:14px;
+      letter-spacing:.2px;
+      text-shadow: 0 2px 12px rgba(0,0,0,.75);
+    }
+
+    #viewCapacity { max-width: 1080px; margin: 0 auto; }
+
+    /* Tabs pastel */
+    .tabs .tab{
+      position:relative;
+      transition: .15s ease;
+    }
+    #tabStock{ background: rgba(34,197,94,.08); border-color: rgba(34,197,94,.25); }
+    #tabLayout{ background: rgba(59,130,246,.08); border-color: rgba(59,130,246,.25); }
+    #tabCapacity{ background: rgba(168,85,247,.08); border-color: rgba(168,85,247,.25); }
+    #tabInbound{ background: rgba(251,146,60,.08); border-color: rgba(251,146,60,.25); }
+
+    #tabStock.active{ background: rgba(34,197,94,.18); border-color: rgba(34,197,94,.55); color:#0b3b1e; }
+    #tabLayout.active{ background: rgba(59,130,246,.18); border-color: rgba(59,130,246,.55); color:#0b2a55; }
+    #tabCapacity.active{ background: rgba(168,85,247,.18); border-color: rgba(168,85,247,.55); color:#2d124a; }
+    #tabInbound.active{ background: rgba(251,146,60,.18); border-color: rgba(251,146,60,.55); color:#5a2a00; }
+
+    .tabs .tab.active::after{
+      content:"";
+      position:absolute; left:10px; right:10px; bottom:-7px;
+      height:4px; border-radius:999px;
+      background: linear-gradient(90deg, rgba(18,185,178,.9), rgba(34,197,94,.9));
+      box-shadow: 0 8px 18px rgba(15,23,42,.10);
+    }
+
+    /* KPI IO cards */
+    .kpis.io{
+      display:grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap:12px;
+    }
+    .kpi.io{
+      border-radius: 16px;
+      overflow:hidden;
+      border:1px solid var(--border);
+      background:#fff;
+      box-shadow: 0 10px 24px rgba(15,23,42,.08);
+      position:relative;
+    }
+    .kpi.io .kpiTop{ height:7px; background: rgba(203,213,225,.9); }
+    .kpi.io[data-accent="air"] .kpiTop{ background: rgba(59,130,246,.45); }
+    .kpi.io[data-accent="sea"] .kpiTop{ background: rgba(14,165,233,.45); }
+    .kpi.io[data-accent="local"] .kpiTop{ background: rgba(34,197,94,.45); }
+    .kpi.io[data-accent="arm"] .kpiTop{ background: rgba(168,85,247,.45); }
+    .kpi.io[data-accent="tag"] .kpiTop{ background: rgba(251,146,60,.45); }
+    .kpi.io[data-accent="bulkIn"] .kpiTop{ background: rgba(20,184,166,.45); }
+    .kpi.io[data-accent="bulkOut"] .kpiTop{ background: rgba(239,68,68,.30); }
+
+    .kpi.io .kpiBody{ padding:14px; }
+    .kpiTitleRow{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+    .kpiTitle{ font-weight:950; letter-spacing:.1px; color:#0b1220; line-height:1.15rem; }
+    .kpiBadge{
+      font-size:11px;
+      font-weight:950;
+      color:#0f172a;
+      background: #f1f5f9;
+      border:1px solid #e2e8f0;
+      padding:6px 8px;
+      border-radius:999px;
+      white-space:nowrap;
+    }
+    .kpi.io.clickable:hover{ transform: translateY(-1px); transition:.12s ease; box-shadow: 0 14px 30px rgba(15,23,42,.12); }
+    .kpi.io.clickable{ cursor:pointer; }
+
+    .active-kpi-bar{
+      position: sticky;
+      top: 74px;
+      z-index: 20;
+      margin-top: 10px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: rgba(255,255,255,.92);
+      backdrop-filter: blur(6px);
+      box-shadow: 0 8px 22px rgba(15, 23, 42, .06);
+      font-weight: 700;
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+
+    /* Modal (Gráfico) */
+    .modal{
+      position:fixed; inset:0;
+      background: rgba(15,23,42,.52);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      padding:16px;
+      z-index:999;
+    }
+    .modal.open{ display:flex; }
+    .modal-card{
+      width:min(980px, 100%);
+      background:#fff;
+      border:1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: 0 22px 50px rgba(0,0,0,.28);
+      overflow:hidden;
+    }
+    .modal-head{
+      padding:12px 14px;
+      border-bottom:1px solid var(--border);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      background: linear-gradient(135deg, #e9fffb, #ffffff);
+    }
+    .modal-title{
+      font-weight:950;
+      letter-spacing:.2px;
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+    .modal-body{ padding:14px; }
+    .modal-grid{
+      display:grid;
+      grid-template-columns: 1fr 280px;
+      gap:12px;
+      align-items:start;
+    }
+    @media (max-width: 900px){
+      .modal-grid{ grid-template-columns: 1fr; }
+    }
+    .chartBox{
+      border:1px solid var(--border);
+      border-radius: 14px;
+      padding:12px;
+      background:#fff;
+    }
+    .statBox{
+      border:1px solid var(--border);
+      border-radius: 14px;
+      padding:12px;
+      background:#f8fafc;
+    }
+    .statBox .big{
+      font-size:18px;
+      font-weight:950;
+      margin-top:6px;
+    }
+    .kpi-fab{
+      position:absolute;
+      right:10px;
+      top:10px;
+      display:flex;
+      gap:8px;
+      z-index:2;
+    }
+
   </style>
 </head>
+
 <body>
-  <div class="wrap">
-    <div class="topbar">
-      <div class="title">
-        <h1>Firebase Datasets Debug</h1>
-        <p>Si esto se queda en blanco, es porque el universo te odia… o porque faltaba un <span class="mono">catch()</span>. Aquí ya no. 😄</p>
-      </div>
-      <div class="row">
-        <div class="pill" id="authPill">
-          <span class="statusDot" id="authDot"></span>
-          <span id="authText">No logueado</span>
+  <div class="topbar">
+    <div class="brand">
+      <span class="dot"></span>
+      <span>Capacity Tools</span>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" id="tabStock">Data</button>
+      <button class="tab" id="tabLayout">Layout pasillo</button>
+      <button class="tab" id="tabCapacity">Ocupación &amp; Capacidad</button>
+      <button class="tab" id="tabInbound">Inbound - Outbound</button>
+    </div>
+
+    <button class="btn" id="btnActionsToggle" aria-label="Acciones">☰</button>
+
+    <div class="top-actions" id="topActions">
+      <button class="btn" id="btnExport">Exportar resumen (Excel)</button>
+      <button class="btn" id="btnBg">Foto pasillo</button>
+      <button class="btn" id="btnBgClear">Quitar foto</button>
+      <!-- ✅ ahora es Reset LIGHT -->
+      <button class="btn danger" id="btnReset">Reset total (light)</button>
+    </div>
+  </div>
+
+  <div class="container">
+
+    <div id="viewStock" class="grid">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h3>📥 1) Pega tu reporte de stock</h3>
+          </div>
+          <div style="display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap;">
+            <div class="tag"><span class="sw" style="background:var(--green)"></span> Stock lleno</div>
+            <div class="tag"><span class="sw" style="background:var(--blue)"></span> Manual (Doc/MKT)</div>
+            <div class="tag"><span class="sw" style="background:var(--gray)"></span> Vacío</div>
+
+            <button class="btn" id="btnToggleStock" aria-label="Replegar">▾</button>
+          </div>
         </div>
-        <button class="btn blue" id="btnLogin">Login Google</button>
-        <button class="btn ghost" id="btnLogout" disabled>Logout</button>
+
+        <div class="card-body" id="stockUploadBody">
+          <div class="row">
+            <div>
+              <label for="txtStock">Pegado de stock</label>
+              <textarea id="txtStock" placeholder="Pega aquí... (incluye header si lo tienes)"></textarea>
+            </div>
+
+            <div>
+              <div class="card" style="box-shadow:none;">
+                <div class="card-header">
+                  <div>
+                    <h3>🗂️ 2) Overrides manuales (Documentos / MKT / etc.)</h3>
+                  </div>
+                </div>
+                <div class="card-body">
+                  <div class="row">
+                    <div>
+                      <label>Categoría</label>
+                      <input id="selCategory" list="dlCategory" placeholder="Selecciona o escribe categoría" value="MKT"/>
+                      <datalist id="dlCategory">
+                        <option value="MKT"></option>
+                        <option value="ARCHIVOS"></option>
+                        <option value="MERMAS"></option>
+                        <option value="EXTINTOR"></option>
+                        <option value="BLOQUEADAS"></option>
+                      </datalist>
+                    </div>
+                    <div>
+                      <label>Modo</label>
+                      <select id="selMode">
+                        <option value="range">Rango exacto (Desde → Hasta)</option>
+                        <option value="module">Módulo ### completo (01..07)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div class="row" style="margin-top:10px;">
+                    <div id="rangeFields">
+                      <label>Desde (ej: 01-30-085-03)</label>
+                      <input id="inpFrom" placeholder="01-30-085-03" />
+                    </div>
+                    <div id="rangeFields2">
+                      <label>Hasta (ej: 01-30-085-07)</label>
+                      <input id="inpTo" placeholder="01-30-085-07" />
+                    </div>
+
+                    <div id="moduleFields" class="hidden">
+                      <label>Módulo ### (ej: 085)</label>
+                      <input id="inpModule" placeholder="085" />
+                    </div>
+                  </div>
+
+                  <div style="display:flex; gap:10px; margin-top:12px; flex-wrap:wrap;">
+                    <button class="btn primary" id="btnAddManual">+ Agregar</button>
+                    <button class="btn" id="btnClearManual">Limpiar manuales</button>
+                    <label style="display:flex; gap:10px; align-items:center; margin:0; font-size:12px; font-weight:900; color:var(--muted);">
+                      <input type="checkbox" id="chkLowStock" style="width:18px; height:18px;" />
+                      Activar “bajo stock” (naranja)
+                    </label>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                      <span style="font-size:12px; font-weight:900; color:var(--muted);">Umbral:</span>
+                      <input id="inpLowStock" value="10" style="max-width:90px;" />
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+
+              <div style="margin-top:14px;">
+                <label for="txtMoves">📦 3) Pega tu reporte de movimientos (Inbound / Outbound)</label>
+                <textarea id="txtMoves" placeholder="Pega aquí el Excel de movimientos (incluye header). Columnas esperadas: Product Code, Movement Date, Description, User Name, From Location, To Location, Moved Quantity, From Order."></textarea>
+                <div class="hint">Este panel alimenta la pestaña <b>Inbound - Outbound</b>. Puedes pegar 1 mes o varios; el sistema te dejará elegir el mes.</div>
+              </div>
+
+            </div>
+          </div>
+
+          <div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;">
+            <button class="btn primary" id="btnProcess">Procesar / Actualizar</button>
+            <button class="btn sm" id="btnCloudSave" title="Guarda stock, movimientos y manuales en la nube">☁ Guardar nube</button>
+            <button class="btn sm" id="btnCloudLoad" title="Carga el último estado compartido desde la nube">☁ Cargar nube</button>
+            <span class="sub" id="cloudStatus" style="align-self:center; font-weight:800; color:var(--muted);">Nube: —</span>
+            <button class="btn" id="btnGotoLayout">Ir al Layout</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div><h3>📊 Resumen actual</h3></div>
+        </div>
+        <div class="card-body">
+          <div class="kpis">
+            <div class="kpi">
+              <div class="label">Total ubicaciones (catálogo)</div>
+              <div class="value" id="kTotal">—</div>
+              <div class="sub" id="kTotalSub">90 módulos × 7 posiciones</div>
+            </div>
+            <div class="kpi">
+              <div class="label">Llenas por stock</div>
+              <div class="value" id="kStock">—</div>
+              <div class="sub">sum(QTY) &gt; 0</div>
+            </div>
+            <div class="kpi">
+              <div class="label">Llenas manual</div>
+              <div class="value" id="kManual">—</div>
+              <div class="sub">Documentos/MKT/etc.</div>
+            </div>
+            <div class="kpi">
+              <div class="label">Vacías reales</div>
+              <div class="value" id="kEmpty">—</div>
+              <div class="sub">% Ocupación: <span id="kOcc">—</span></div>
+            </div>
+
+            <div class="kpi">
+              <div class="label">Transitorio (equiv. ubicaciones)</div>
+              <div class="value" id="kTransit">—</div>
+              <div class="sub"><span id="kTransitSub">—</span></div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div><h3>🧾 Overrides manuales activos</h3></div>
+        </div>
+        <div class="card-body">
+          <table class="table" id="manualTable">
+            <thead>
+              <tr>
+                <th>Categoría</th>
+                <th>Tipo</th>
+                <th>Desde</th>
+                <th>Hasta</th>
+                <th># Ubicaciones</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td colspan="6" style="color:var(--muted);font-weight:800;">Sin overrides aún.</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
 
-    <div class="grid">
+    <div id="viewLayout" class="grid hidden">
       <div class="card">
-        <h2>1) Config + Estado</h2>
+        <div class="card-header">
+          <div><h3>Layout tipo Pasillo (090 → 001)</h3></div>
+          <div class="minimap-legend">
+            <span class="pill"><span class="sw" style="background:var(--green)"></span> Stock</span>
+            <span class="pill"><span class="sw" style="background:var(--amber)"></span> M. Empaque</span>
+            <span class="pill"><span class="sw" style="background:var(--blue)"></span> Manual</span>
+            <span class="pill"><span class="sw" style="background:var(--orange)"></span> Bajo stock</span>
+            <span class="pill"><span class="sw" style="background:var(--gray)"></span> Vacío</span>
+            <span class="pill"><span class="sw" style="background:var(--red)"></span> Bloqueado</span>
+            <span class="pill"><span class="sw" style="background:var(--teal)"></span> Reservado</span>
+            <span class="pill"><span class="sw" style="background:var(--violet)"></span> Transitorio</span>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="minimap">
+            <div class="minimap-bar" id="minimapBar" title="Click en un módulo para saltar"></div>
+          </div>
+        </div>
+      </div>
 
-        <div class="row">
-          <div>
-            <label>Mes (monthId)</label><br/>
-            <input id="monthId" class="mono" placeholder="2026-03" value="" />
+      <div class="layout-wrap">
+        <div class="rack">
+          <div class="rack-title">
+            <div>
+              <div class="t1">Rack 1 (IMPAR)</div>
+              <div class="t2">Módulos: 089, 087, …, 001</div>
+            </div>
+            <div class="tag"><span class="sw" style="background:#e2e8f0"></span><span id="rack1Count">—</span></div>
           </div>
-          <div>
-            <label>Doc ID (subdocumento)</label><br/>
-            <input id="docId" class="mono" placeholder="movimientos" value="movimientos" />
+          <div class="rack-list" id="rack1List"></div>
+        </div>
+
+        <div class="aisle-col">
+          <div class="aisle-searchbar">
+            <div class="search">
+              <span style="font-weight:900;color:#0b1220;">🔎</span>
+              <input id="inpSearch" placeholder="Buscar: 090 o 01-30-089-05" />
+            </div>
           </div>
-          <div style="flex:1 1 220px">
-            <label>Acción rápida</label><br/>
-            <div class="row">
-              <button class="btn green" id="btnTestWrite">Test WRITE</button>
-              <button class="btn amber" id="btnTestRead">Test READ</button>
-              <button class="btn red" id="btnClearLog">Limpiar LOG</button>
+
+          <div class="aisle" id="aisle">
+            <div class="overlay">
+              <div class="aisle-bottom">
+                <button class="navbtn" id="btnPrev">◀ Anterior</button>
+                <div style="font-weight:900;">
+                  <span style="opacity:.85;">Módulo:</span> <span id="focusModule">090</span>
+                  <span style="opacity:.60;">|</span>
+                  <span style="opacity:.85;">Ubicaciones:</span> 01..07
+                </div>
+                <button class="navbtn" id="btnNext">Siguiente ▶</button>
+              </div>
             </div>
           </div>
         </div>
 
-        <div class="kpi">
-          <div class="box"><b>Usuario</b><span id="kUser">—</span></div>
-          <div class="box"><b>Email</b><span id="kEmail">—</span></div>
-          <div class="box"><b>Último error</b><span id="kErr">—</span></div>
+        <div class="rack">
+          <div class="rack-title">
+            <div>
+              <div class="t1">Rack 2 (PAR)</div>
+              <div class="t2">Módulos: 090, 088, …, 002</div>
+            </div>
+            <div class="tag"><span class="sw" style="background:#e2e8f0"></span><span id="rack2Count">—</span></div>
+          </div>
+          <div class="rack-list" id="rack2List"></div>
         </div>
-
-        <p class="hint">
-          Tus rules permiten <b>read</b> a cualquiera, pero <b>write</b> solo si estás logueado con
-          <span class="mono">kevin.suarezoriflame@gmail.com</span>. Si no haces login, el write será <b>permission-denied</b>.
-        </p>
       </div>
 
       <div class="card">
-        <h2>2) Payload de prueba (lo que se guarda)</h2>
-        <textarea id="payload" class="mono">
-{
-  "nota": "Prueba de escritura desde HTML",
-  "ts": "__SERVER_TIMESTAMP__",
-  "equipo": "PC/Browser",
-  "check": "checkorder-1"
-}
-        </textarea>
-        <p class="hint">
-          Tip: <span class="mono">__SERVER_TIMESTAMP__</span> se reemplaza por <span class="mono">serverTimestamp()</span>.
-        </p>
+        <div class="card-header">
+          <div><h3>Detalle del módulo seleccionado</h3></div>
+        </div>
+        <div class="card-body">
+          <table class="table" id="detailTable">
+            <thead>
+              <tr>
+                <th>Ubicación</th>
+                <th>Estado</th>
+                <th>QTY total</th>
+                <th>Motivo manual</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td colspan="4" style="color:var(--muted);font-weight:800;">Selecciona un módulo del rack o del minimapa.</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
+    </div>
 
-      <div class="card" style="grid-column: 1 / -1;">
-        <h2>3) Consola interna (logs que no se esconden)</h2>
-        <div class="log mono" id="logBox"></div>
-        <p class="hint">
-          Si algo falla, aquí sale el motivo exacto. Copia y pega este log y lo corregimos en modo “cero drama”.
-        </p>
+    <div id="viewCapacity" class="grid hidden">
+      <div class="card">
+        <div class="card-header">
+          <div><h3>Capacity Tools</h3></div>
+        </div>
+
+        <div class="grid2 capGrid" style="padding:14px;">
+          <div class="capSection">
+            <div class="capCardTitle">📦 Total unidades bodega</div>
+            <table class="tbl mini">
+              <thead><tr><th>Etiqueta</th><th style="text-align:right;">Suma Physical Qty</th></tr></thead>
+              <tbody id="tblUnits"></tbody>
+              <tfoot><tr><td style="font-weight:900;">Total general</td><td id="uTotal" style="text-align:right;font-weight:900;"></td></tr></tfoot>
+            </table>
+            <div class="note" id="uNote" style="margin-top:10px;"></div>
+          </div>
+
+          <div class="capSection">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+              <div class="capCardTitle" style="margin:0;">🏗️ Total pallets bodega central</div>
+              <div class="capBadge"><span class="sw" style="background:var(--teal)"></span><span id="capPct">0%</span> ocupación</div>
+              <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <button class="btn sm" id="btnSaveOccToday" type="button">Guardar ocupación (hoy)</button>
+                <button class="btn ghost sm" id="btnViewOccHistory" type="button">Ver evolución</button>
+              </div>
+            </div>
+
+            <table class="tbl mini" style="margin-top:10px;">
+              <thead><tr><th>Clasificación</th><th style="text-align:right;">Pallets</th></tr></thead>
+              <tbody id="tblPallets"></tbody>
+              <tfoot><tr><td style="font-weight:900;">Total usados</td><td id="pUsed" style="text-align:right;font-weight:900;"></td></tr></tfoot>
+            </table>
+
+            <div class="capKpisRow">
+              <div class="kpi">
+                <div class="kpi-title">Total ubicaciones (catálogo)</div>
+                <div class="kpi-value" id="kTotalCap">0</div>
+                <div class="kpi-sub" id="kTotalCapSub">—</div>
+              </div>
+              <div class="kpi">
+                <div class="kpi-title">No utilizables</div>
+                <div class="kpi-value" id="kBlocked">0</div>
+                <div class="kpi-sub">Bloqueadas</div>
+              </div>
+              <div class="kpi">
+                <div class="kpi-title">Total disponible</div>
+                <div class="kpi-value" id="kAvail">0</div>
+                <div class="kpi-sub">Catálogo - bloqueadas</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="capSection">
+            <div class="capCardTitle">🧱 Capacidad por rack</div>
+            <table class="tbl mini">
+              <thead><tr><th>Rack</th><th style="text-align:right;">Capacidad</th><th style="text-align:right;">Usadas</th><th style="text-align:right;">Disponibles</th></tr></thead>
+              <tbody id="tblRacks"></tbody>
+            </table>
+
+            <div style="margin-top:14px;">
+              <div class="capCardTitle">🍰 Distribución de pallets</div>
+              <div style="display:grid; grid-template-columns: 340px 1fr; gap:12px; align-items:start;">
+                <canvas id="piePallets" width="340" height="220" style="border-radius:14px;background:#fff;border:1px solid var(--border);"></canvas>
+                <div id="pieLegend" style="display:flex; flex-direction:column; gap:6px;"></div>
+              </div>
+              <div class="note" style="margin-top:10px;">Incluye <b>Productos</b> + categorías manuales. Ubicaciones bloqueadas no cuentan como usadas.</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div id="viewInbound" class="grid hidden">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h3>Inbound - Outbound</h3>
+            <p>KPIs mensuales basados en el reporte pegado en <b>Data &gt; Panel 3</b>. Click en cada KPI para ver el detalle.</p>
+          </div>
+          <div style="display:flex; gap:10px; align-items:end; flex-wrap:wrap;">
+            <div style="min-width:260px;">
+              <label style="margin:0 0 6px 0;">Mes</label>
+              <select id="selMonth"></select>
+            </div>
+            <button class="btn primary" id="btnCloseMonth" type="button">📌 Cerrar mes</button>
+            <button class="btn ghost" id="btnOpenOutboundChart" type="button" title="Gráfico por día (Outbound)">📈 Gráfico Outbound</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="ioKpisWrap">
+            <div class="kpis" id="kpisInbound"></div>
+          </div>
+          <div id="activeKpiBar" class="active-kpi-bar" style="display:none;"></div>
+
+          <div class="card" style="margin-top:14px;">
+            <div class="card-header" style="border-bottom:none;">
+              <div>
+                <h3 style="margin:0;font-size:14.5px;">Ajustes del mes</h3>
+                <p style="margin:6px 0 0;">Estos ajustes se guardan por mes. En meses cerrados se respetan como snapshot.</p>
+              </div>
+            </div>
+            <div class="card-body" style="padding-top:0;">
+              <div class="row" style="gap:12px; align-items:end; flex-wrap:wrap;">
+                <div style="min-width:260px; flex:1;">
+                  <label>🏷️ Unidades etiquetadas (manual)</label>
+                  <input id="inpTaggedUnits" type="number" min="0" step="1" placeholder="Ej: 200" />
+                  <div class="hint">Se guarda por mes (selector “Mes”). Solo afecta el KPI de Etiquetadas.</div>
+                </div>
+                <button class="btn" id="btnSaveTagged" type="button">Guardar</button>
+                <button class="btn ghost" id="btnClearTagged" type="button">Limpiar</button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Modal: gráfico Outbound -->
+  <div class="modal" id="modalOutbound">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-title">📈 Abastecimiento a PL • <span id="modalMonthLbl" style="font-weight:900;color:#0f4a42;"></span></div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button class="btn sm" id="btnExportChartPng" type="button">Descargar PNG</button>
+          <button class="btn danger sm" id="btnCloseModalOutbound" type="button">Cerrar</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="modal-grid">
+          <div class="chartBox">
+            <canvas id="outboundLine" width="860" height="360" style="width:100%;height:auto;"></canvas>
+            <div class="hint" style="margin-top:10px;">
+              Fuente: Panel 3 filtrado por reglas Outbound (To = PL; From no vacío; excluye return/PL/D_Picking/Procesos_CW/cyclecount/inbound).
+            </div>
+          </div>
+          <div class="statBox">
+            <div class="muted">Top día</div>
+            <div class="big" id="topDay">—</div>
+            <div class="muted" style="margin-top:10px;">Unidades</div>
+            <div class="big" id="topUnits">—</div>
+            <div class="muted" style="margin-top:10px;">Días con movimiento</div>
+            <div class="big" id="daysCount">—</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 
-  <script type="module">
-    /**********************
-     * 0) Anti “pantalla en blanco”
-     **********************/
-    const logBox = document.getElementById('logBox');
-    const kErr = document.getElementById('kErr');
 
-    function log(...args){
-      const line = args.map(a => {
-        try { return typeof a === 'string' ? a : JSON.stringify(a, null, 2); }
-        catch { return String(a); }
-      }).join(' ');
-      console.log(...args);
-      logBox.textContent += line + "\\n";
-      logBox.scrollTop = logBox.scrollHeight;
+
+  <!-- Modal: evolución ocupación diaria -->
+  <div class="modal" id="modalOcc">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-title">📈 Evolución de ocupación • <span id="occRangeLbl" style="font-weight:900;color:#0f4a42;"></span></div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button class="btn sm" id="btnExportOccPng" type="button">Descargar PNG</button>
+          <button class="btn danger sm" id="btnCloseModalOcc" type="button">Cerrar</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="modal-grid">
+          <div class="chartBox">
+            <canvas id="occLine" width="860" height="360" style="width:100%;height:auto;"></canvas>
+            <div class="hint" style="margin-top:10px;">
+              Fuente: guardado diario automático (Firestore) • % ocupación + pallets usados del panel.
+            </div>
+          </div>
+          <div class="sideBox">
+            <div class="kpi">
+              <div class="lbl">Último día</div>
+              <div class="val" id="occLastDate">—</div>
+            </div>
+            <div class="kpi">
+              <div class="lbl">Ocupación</div>
+              <div class="val" id="occLastPct">—</div>
+            </div>
+            <div class="kpi">
+              <div class="lbl">Pallets usados</div>
+              <div class="val" id="occLastPallets">—</div>
+            </div>
+            <div class="kpi">
+              <div class="lbl">Días guardados</div>
+              <div class="val" id="occDays">—</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+<script>
+  const pad3 = n => String(n).padStart(3,'0');
+  const pad2 = n => String(n).padStart(2,'0');
+
+  function normalizeHeader(s){
+    return String(s||"")
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g,' ')
+      .replace(/_/g,' ')
+      .replace(/á/g,'a').replace(/é/g,'e').replace(/í/g,'i').replace(/ó/g,'o').replace(/ú/g,'u');
+  }
+  function isValidLoc(loc){ return /^01-30-\d{3}-\d{2}$/.test(loc); }
+
+  function isTransitoryLocName(loc){
+    if(!loc) return false;
+    const t = String(loc).trim().toLowerCase();
+    return (
+      t.startsWith("bulk_cw") ||
+      t.includes("armados") ||
+      t.includes("aereos") ||
+      t.startsWith("inb") ||
+      t.includes("transito")
+    );
+  }
+
+  function getModuleFromLoc(loc){ return loc.split("-")[2]; }
+  function getPosFromLoc(loc){ return loc.split("-")[3]; }
+
+  function moduleToLocs(mod3){
+    const arr = [];
+    for(let p=1;p<=7;p++) arr.push(`01-30-${mod3}-${pad2(p)}`);
+    return arr;
+  }
+
+  function moduleParity(mod3){
+    const n = parseInt(mod3,10);
+    return (n % 2 === 0) ? "even" : "odd";
+  }
+
+  const catalog = [];
+  const modules = [];
+  for(let m=1;m<=90;m++){
+    const mod = pad3(m);
+    modules.push(mod);
+    for(let p=1;p<=7;p++){
+      catalog.push(`01-30-${mod}-${pad2(p)}`);
+    }
+  }
+  const TOTAL = catalog.length;
+
+  const LS_KEY_MANUAL = "capacityTools_manualOverrides_v1";
+  const LS_KEY_STOCK  = "capacityTools_stockText_v1";
+  const LS_KEY_MOVES  = "capacityTools_movesText_v1";
+  const LS_KEY_IO_MANUAL = "capacityTools_ioManual_v1";
+
+  // ✅ snapshots de meses cerrados
+  const LS_KEY_IO_SNAP = "capacityTools_ioSnapshots_v1";
+
+  let stockText = localStorage.getItem(LS_KEY_STOCK) || "";
+  let movesText = localStorage.getItem(LS_KEY_MOVES) || "";
+
+  let manualOverrides = loadManual();
+
+  
+
+  // 🔗 Bridge para módulos (Firebase) - permite leer/escribir manualOverrides desde <script type="module">
+  window.__CT_getManualOverrides = () => manualOverrides;
+  window.__CT_setManualOverrides = (arr) => {
+    manualOverrides = Array.isArray(arr) ? arr : [];
+    try{ saveManual(); }catch(e){}
+    try{ renderManualTable(); }catch(e){}
+  };
+let stockMap = new Map();
+  let stockItemsMap = new Map();
+  let packLocSet = new Set();
+  let stockRowsParsed = [];
+
+  let movesRowsParsed = [];
+  let movesMonths = [];
+  let movesByMonth = new Map();
+
+  let ioManual = loadIOM();
+  let ioSnaps = loadIOSnaps();
+
+  let state = { transitory: {units:0, need:0, allocated:0} };
+  let derived = new Map();
+
+  let focusModule = "090";
+  let orderedModulesDesc = [...modules].sort((a,b)=>parseInt(b)-parseInt(a));
+
+  const tabStock = document.getElementById("tabStock");
+  const tabLayout = document.getElementById("tabLayout");
+  const tabCapacity = document.getElementById("tabCapacity");
+  const tabInbound = document.getElementById("tabInbound");
+  const viewStock = document.getElementById("viewStock");
+  const viewLayout = document.getElementById("viewLayout");
+  const viewCapacity = document.getElementById("viewCapacity");
+  const viewInbound = document.getElementById("viewInbound");
+
+  const txtStock = document.getElementById("txtStock");
+  const txtMoves = document.getElementById("txtMoves");
+  const btnProcess = document.getElementById("btnProcess");
+  const btnGotoLayout = document.getElementById("btnGotoLayout");
+  const selMode = document.getElementById("selMode");
+  const selCategory = document.getElementById("selCategory");
+  const rangeFields = document.getElementById("rangeFields");
+  const rangeFields2 = document.getElementById("rangeFields2");
+  const moduleFields = document.getElementById("moduleFields");
+
+  const inpFrom = document.getElementById("inpFrom");
+  const inpTo = document.getElementById("inpTo");
+  const inpModule = document.getElementById("inpModule");
+
+  const btnAddManual = document.getElementById("btnAddManual");
+  const btnClearManual = document.getElementById("btnClearManual");
+
+  const chkLowStock = document.getElementById("chkLowStock");
+  const inpLowStock = document.getElementById("inpLowStock");
+
+  const kTotal = document.getElementById("kTotal");
+  const kTotalSub = document.getElementById("kTotalSub");
+  const kStock = document.getElementById("kStock");
+  const kManual = document.getElementById("kManual");
+  const kEmpty = document.getElementById("kEmpty");
+  const kOcc = document.getElementById("kOcc");
+  const kTransit = document.getElementById("kTransit");
+  const kTransitSub = document.getElementById("kTransitSub");
+
+  const manualTable = document.getElementById("manualTable").querySelector("tbody");
+  const btnReset = document.getElementById("btnReset");
+
+  const btnActionsToggle = document.getElementById("btnActionsToggle");
+  const topActions = document.getElementById("topActions");
+  if(btnActionsToggle && topActions){
+    btnActionsToggle.addEventListener("click", ()=> topActions.classList.toggle("collapsed"));
+  }
+
+  const btnExport = document.getElementById("btnExport");
+
+  const minimapBar = document.getElementById("minimapBar");
+  const rack1List = document.getElementById("rack1List");
+  const rack2List = document.getElementById("rack2List");
+  const rack1Count = document.getElementById("rack1Count");
+  const rack2Count = document.getElementById("rack2Count");
+
+  const inpSearch = document.getElementById("inpSearch");
+  const btnPrev = document.getElementById("btnPrev");
+  const btnNext = document.getElementById("btnNext");
+  const focusModuleEl = document.getElementById("focusModule");
+  const detailTableBody = document.getElementById("detailTable").querySelector("tbody");
+
+  const btnCloseMonth = document.getElementById("btnCloseMonth");
+  const btnOpenOutboundChart = document.getElementById("btnOpenOutboundChart");
+
+  const modalOutbound = document.getElementById("modalOutbound");
+  const btnCloseModalOutbound = document.getElementById("btnCloseModalOutbound");
+  const modalMonthLbl = document.getElementById("modalMonthLbl");
+  const canvasOutbound = document.getElementById("outboundLine");
+  const topDayEl = document.getElementById("topDay");
+  const topUnitsEl = document.getElementById("topUnits");
+  const daysCountEl = document.getElementById("daysCount");
+  const btnExportChartPng = document.getElementById("btnExportChartPng");
+
+  const catConfig = {
+    MKT:        { state:"manual", label:"MKT", class:"manual", color:"var(--blue)" },
+    ARCHIVOS:   { state:"manual", label:"Archivos", class:"manual", color:"var(--blue)" },
+    MERMAS:     { state:"manual", label:"Mermas", class:"manual", color:"var(--orange)" },
+    EXTINTOR:   { state:"manual", label:"Extintor", class:"manual", color:"var(--teal)" },
+    BLOQUEADAS: { state:"block",  label:"Bloqueadas", class:"block",  color:"var(--red)" },
+  };
+
+  const DEFAULT_MANUAL_CFG = { state:"manual", label:"Manual", class:"manual", color:"var(--blue)" };
+
+
+  // Códigos fijos de Material de Empaque (embebidos desde Libro5.xlsx)
+  const PACK_CODES = new Set(["800175", "803254", "803255", "803256", "803257", "803262", "803264", "803266", "803269", "803449", "803450", "803452", "803456", "803457", "803491", "803492", "803494", "803496", "803715", "803716", "825954", "826044", "826952", "826961", "827008", "827108", "827383", "827509", "827510", "827523", "827801", "827831", "827832", "827922", "828333", "828334", "828335", "828449", "828623", "828711", "829715", "830103", "830117", "830208", "830513", "830514", "830516", "830759", "830846", "830847", "830848", "830849", "831491", "831492", "831493", "831494", "831628", "831648", "831840", "831841", "831842", "831843", "831844", "831846", "831851", "832014", "832023", "832025", "832131", "832132", "832153", "832154", "832172", "832218", "832261", "832308", "832384", "832406", "832407", "832424", "827509", "832549"]);
+  const isPackCode = (v)=> PACK_CODES.has(String(v||"").trim());
+
+  function normalizeCategory(raw){
+    let c = String(raw||"").replace(/\s+/g," ").trim().toUpperCase();
+    if(!c) return "MKT";
+    // normaliza variantes comunes de bloqueo
+    if(["BLOQUEADA","BLOQUEADAS","BLOQUEADO","BLOQUEADOS","BLOCK","BLOCKED"].includes(c)) return "BLOQUEADAS";
+    return c;
+  }
+
+  function categoryLabel(cat){
+    const cfg = catConfig[cat];
+    if(cfg) return cfg.label;
+    // fallback: "MI CATEGORIA" -> "Mi categoria"
+    const pretty = String(cat||"").toLowerCase().replace(/(^|\s)([a-záéíóúñ])/g,(m,p1,p2)=>p1+p2.toUpperCase());
+    return pretty || "Manual";
+  }
+
+  txtStock.value = stockText;
+  if(txtMoves) txtMoves.value = movesText;
+  // kTotal se actualiza en updateKPIs() para descontar Bloqueadas
+
+  // Boot
+  rebuildAll();
+
+  tabStock.addEventListener("click", ()=>setTab("stock"));
+  tabLayout.addEventListener("click", ()=>setTab("layout"));
+  tabCapacity.addEventListener("click", ()=>setTab("capacity"));
+  if(tabInbound) tabInbound.addEventListener("click", ()=>setTab("inbound"));
+
+  function setTab(which){
+    const allTabs = [tabStock, tabLayout, tabCapacity, tabInbound].filter(Boolean);
+    for(const t of allTabs) t.classList.remove("active");
+
+    viewStock.classList.add("hidden");
+    viewLayout.classList.add("hidden");
+    viewCapacity.classList.add("hidden");
+    if(viewInbound) viewInbound.classList.add("hidden");
+
+    if(which==="stock"){
+      tabStock.classList.add("active");
+      viewStock.classList.remove("hidden");
+    }else if(which==="layout"){
+      tabLayout.classList.add("active");
+      viewLayout.classList.remove("hidden");
+    }else if(which==="inbound"){
+      if(tabInbound) tabInbound.classList.add("active");
+      if(viewInbound) viewInbound.classList.remove("hidden");
+      renderInboundOutbound();
+    }else{
+      tabCapacity.classList.add("active");
+      viewCapacity.classList.remove("hidden");
+      renderCapacity();
+    }
+  }
+
+  selMode.addEventListener("change", ()=>{
+    const v = selMode.value;
+    if(v==="range"){
+      rangeFields.classList.remove("hidden");
+      rangeFields2.classList.remove("hidden");
+      moduleFields.classList.add("hidden");
+    }else{
+      rangeFields.classList.add("hidden");
+      rangeFields2.classList.add("hidden");
+      moduleFields.classList.remove("hidden");
+    }
+  });
+
+  btnProcess.addEventListener("click", ()=>{
+    stockText = txtStock.value || "";
+    localStorage.setItem(LS_KEY_STOCK, stockText);
+
+    if(txtMoves){
+      movesText = txtMoves.value || "";
+      localStorage.setItem(LS_KEY_MOVES, movesText);
     }
 
-    window.addEventListener('error', (e) => {
-      log('JS Error:', e.message, e.filename, e.lineno, e.colno);
-      kErr.textContent = e.message || 'JS Error';
-      kErr.style.color = 'var(--red)';
+    parseStock(stockText);
+    parseMoves(movesText);
+    applyDerived();
+    updateKPIs();
+    renderManualTable();
+    renderLayout();
+    renderCapacity();
+  });
+
+  btnGotoLayout.addEventListener("click", ()=> setTab("layout"));
+
+  chkLowStock.addEventListener("change", ()=>{
+    applyDerived(); updateKPIs(); renderLayout(); renderCapacity();
+  });
+  inpLowStock.addEventListener("change", ()=>{
+    applyDerived(); updateKPIs(); renderLayout(); renderCapacity();
+  });
+
+  btnAddManual.addEventListener("click", ()=>{
+    const category = normalizeCategory(selCategory.value);
+    const mode = selMode.value;
+
+    let locs = [];
+    let from="", to="";
+
+    if(mode==="range"){
+      from = (inpFrom.value||"").trim();
+      to   = (inpTo.value||"").trim();
+      if(!isValidLoc(from) || !isValidLoc(to)){
+        return alert("⚠️ Formato inválido. Usa: 01-30-085-03 (### 3 dígitos, ## 2 dígitos).");
+      }
+      const m1 = getModuleFromLoc(from), m2 = getModuleFromLoc(to);
+      if(m1 !== m2){
+        return alert("⚠️ El rango debe estar dentro del mismo módulo ###. Ej: 01-30-085-01 a 01-30-085-07.");
+      }
+      const p1 = parseInt(getPosFromLoc(from),10);
+      const p2 = parseInt(getPosFromLoc(to),10);
+      const start = Math.min(p1,p2), end = Math.max(p1,p2);
+      for(let p=start;p<=end;p++) locs.push(`01-30-${m1}-${pad2(p)}`);
+    }else{
+      const mod = (inpModule.value||"").trim();
+      if(!/^\d{3}$/.test(mod) || parseInt(mod,10)<1 || parseInt(mod,10)>90){
+        return alert("⚠️ Módulo inválido. Debe ser 3 dígitos entre 001 y 090 (ej: 085).");
+      }
+      from = `01-30-${mod}-01`;
+      to   = `01-30-${mod}-07`;
+      locs = moduleToLocs(mod);
+    }
+
+    locs = locs.filter(l => catalog.includes(l));
+    if(locs.length===0){
+      return alert("⚠️ No se encontraron ubicaciones válidas en ese rango/módulo.");
+    }
+
+    const id = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random();
+    manualOverrides.push({
+      id, category, type: mode,
+      from, to, locs,
+      createdAt: new Date().toISOString()
     });
+    saveManual();
+    applyDerived();
+    updateKPIs();
+    renderManualTable();
+    renderLayout();
+    renderCapacity();
+  });
 
-    window.addEventListener('unhandledrejection', (e) => {
-      log('Promise Rejection:', e.reason);
-      kErr.textContent = (e.reason?.message || String(e.reason) || 'Promise rejection');
-      kErr.style.color = 'var(--red)';
+  btnClearManual.addEventListener("click", ()=>{
+    if(!confirm("¿Seguro que deseas limpiar TODOS los overrides manuales?")) return;
+    manualOverrides = [];
+    saveManual();
+    applyDerived();
+    updateKPIs();
+    renderManualTable();
+    renderLayout();
+    renderCapacity();
+  });
+
+  // ✅ 1) Reset total LIGHT: solo Panel 1 y Panel 3 (NO toca manuales)
+  btnReset.addEventListener("click", ()=>{
+    if(!confirm("Reset total (light): borra SOLO Panel 1 (Stock) y Panel 3 (Movimientos). Manuales se quedan intactos. ¿Continuar?")) return;
+
+    // borrar storage y textareas de Panel 1 y Panel 3
+    localStorage.removeItem(LS_KEY_STOCK);
+    localStorage.removeItem(LS_KEY_MOVES);
+
+    stockText = "";
+    movesText = "";
+    txtStock.value = "";
+    if(txtMoves) txtMoves.value = "";
+
+    // reset data derivada del stock/moves
+    stockMap = new Map();
+    stockItemsMap = new Map();
+    stockRowsParsed = [];
+    movesRowsParsed = [];
+    movesByMonth = new Map();
+    movesMonths = [];
+
+    // no tocamos manualOverrides ni LS_KEY_MANUAL
+    derived = new Map();
+    focusModule = "090";
+
+    // reconstruir UI
+    applyDerived();
+    updateKPIs();
+    renderManualTable(); // manuales siguen
+    renderLayout();
+    renderCapacity();
+
+    // refrescar selector de meses (queda vacío)
+    rebuildMonthSelector();
+    if(tabInbound.classList.contains("active")) renderInboundOutbound();
+
+    alert("✅ Listo. Panel 1 y 3 limpios. Manuales intactos.");
+  });
+
+  btnExport.addEventListener("click", ()=>{
+    const lines = [];
+    lines.push("module,rack,filled_stock,filled_manual,empty,blocked,reserved,low_stock");
+    for(const mod of orderedModulesDesc){
+      const rack = moduleParity(mod)==="odd" ? "Rack1" : "Rack2";
+      let fs=0,fm=0,em=0,bl=0,rs=0,ls=0;
+      for(const loc of moduleToLocs(mod)){
+        const d = derived.get(loc);
+        const st = d?.state || "empty";
+        if(st==="stock" || st==="full" || st==="low" || st==="transit") fs += 1;
+        if(st==="manual") fm++;
+        if(st==="empty") em++;
+        if(st==="block") bl++;
+        if(st==="reserve") rs++;
+        if(st==="low") ls++;
+      }
+      lines.push([mod,rack,fs,fm,em,bl,rs,ls].join(","));
+    }
+    const htmlTable = [
+      '<html><head><meta charset="utf-8"></head><body><table border="1">',
+      '<tr><th>Modulo</th><th>Rack</th><th>Stock_lleno</th><th>Manual</th><th>Vacio</th><th>Bloqueado</th><th>Reservado</th><th>Bajo_stock</th></tr>',
+      ...lines.slice(1).map(l=>{
+        const c=l.split(',');
+        return `<tr>${c.map(x=>`<td>${x}</td>`).join('')}</tr>`;
+      }),
+      '</table></body></html>'
+    ].join('');
+    const blob = new Blob([htmlTable], {type:"application/vnd.ms-excel;charset=utf-8"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "capacity_tools_resumen.xls";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  });
+
+  const LS_KEY_BG = "capacityTools_bgImage_v1";
+  const btnBg = document.getElementById("btnBg");
+  const btnBgClear = document.getElementById("btnBgClear");
+  const aisleEl = document.getElementById("aisle");
+
+  function applyAisleBg(dataUrl){
+    if(!aisleEl) return;
+    if(dataUrl){
+      aisleEl.style.backgroundImage =
+        `linear-gradient(180deg, rgba(0,0,0,.28), rgba(0,0,0,.10)),
+         url("${dataUrl}")`;
+    }else{
+      aisleEl.style.backgroundImage =
+        "linear-gradient(180deg, rgba(0,0,0,.28), rgba(0,0,0,.10)), radial-gradient(900px 520px at 50% 40%, rgba(255,255,255,.10), rgba(255,255,255,0) 55%), linear-gradient(135deg, rgba(59,130,246,.18), rgba(34,197,94,.10))";
+    }
+  }
+
+  applyAisleBg(localStorage.getItem(LS_KEY_BG) || "");
+
+  if(btnBg){
+    btnBg.addEventListener("click", ()=>{
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
+      input.onchange = ()=>{
+        const file = input.files && input.files[0];
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = ()=>{
+          const dataUrl = String(reader.result || "");
+          localStorage.setItem(LS_KEY_BG, dataUrl);
+          applyAisleBg(dataUrl);
+          alert("✅ Foto del pasillo aplicada.");
+        };
+        reader.readAsDataURL(file);
+      };
+      input.click();
     });
+  }
 
-    /**********************
-     * 1) Firebase imports (SDK modular)
-     *    (Funciona en GitHub Pages)
-     **********************/
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-    import {
-      getFirestore, doc, setDoc, getDoc, serverTimestamp
-    } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+  if(btnBgClear){
+    btnBgClear.addEventListener("click", ()=>{
+      localStorage.removeItem(LS_KEY_BG);
+      applyAisleBg("");
+      alert("✅ Foto removida.");
+    });
+  }
 
-    import {
-      getAuth, GoogleAuthProvider, signInWithPopup,
-      signOut, onAuthStateChanged
-    } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+  inpSearch.addEventListener("keydown", (e)=>{
+    if(e.key !== "Enter") return;
+    const q = (inpSearch.value||"").trim();
+    if(!q) return;
 
-    /**********************
-     * 2) Pega aquí tu firebaseConfig REAL
-     **********************/
-    const firebaseConfig = {
-      // 👇 PEGA AQUÍ TU firebaseConfig (el bloque que te da Firebase)
-      // apiKey: "...",
-      // authDomain: "...",
-      // projectId: "...",
-      // storageBucket: "...",
-      // messagingSenderId: "...",
-      // appId: "..."
+    if(isValidLoc(q)){
+      const mod = getModuleFromLoc(q);
+      setFocusModule(mod);
+      highlightLoc(q);
+      return;
+    }
+    const digits = q.replace(/\D/g,'');
+    if(digits.length===1 || digits.length===2 || digits.length===3){
+      const mod = pad3(parseInt(digits,10));
+      if(parseInt(mod,10)>=1 && parseInt(mod,10)<=90){
+        setFocusModule(mod);
+        return;
+      }
+    }
+    alert("⚠️ Búsqueda no reconocida. Usa 089 o 01-30-089-05.");
+  });
+
+  btnPrev.addEventListener("click", ()=>{
+    const idx = orderedModulesDesc.indexOf(focusModule);
+    if(idx < 0) return;
+    const nextIdx = Math.min(idx + 1, orderedModulesDesc.length - 1);
+    setFocusModule(orderedModulesDesc[nextIdx]);
+  });
+  btnNext.addEventListener("click", ()=>{
+    const idx = orderedModulesDesc.indexOf(focusModule);
+    if(idx < 0) return;
+    const prevIdx = Math.max(idx - 1, 0);
+    setFocusModule(orderedModulesDesc[prevIdx]);
+  });
+
+  function rebuildAll(){
+    parseStock(stockText);
+    parseMoves(movesText);
+    applyDerived();
+    updateKPIs();
+    renderManualTable();
+    renderLayout();
+    renderCapacity();
+  }
+
+  function parseStock(text){
+    stockMap = new Map();
+    stockItemsMap = new Map();
+    stockRowsParsed = [];
+
+    const raw = (text||"").trim();
+    if(!raw) return;
+
+    const lines = raw.split(/\r?\n/).filter(l=>l.trim().length>0);
+    if(lines.length===0) return;
+
+    const first = lines[0];
+    let delim = "\t";
+    if(first.includes("\t")) delim = "\t";
+    else if(first.includes(",")) delim = ",";
+    else delim = null;
+
+    function splitLineLocal(line){
+      if(delim===null){
+        return line.trim().split(/\s+/).filter(Boolean);
+      }
+      return line.split(delim).map(s=>String(s||"").trim());
+    }
+
+    let header = splitLineLocal(lines[0]);
+    const headerNorm = header.map(normalizeHeader);
+
+    const idxLoc = findIndex(headerNorm, ["ubicacion","ubicación","location","locacion"]);
+    let idxQty = findIndex(headerNorm, ["physical quantity","qty","cantidad","quantity","physicalqty"]);
+
+    if(idxQty === -1){
+      const iPhys = headerNorm.findIndex(h=>h==="physical");
+      if(iPhys !== -1 && headerNorm[iPhys+1]==="quantity") idxQty = iPhys;
+    }
+
+    const idxZona= findIndex(headerNorm, ["zona","zone"]);
+    const idxVar = findIndex(headerNorm, ["variante","variant","sku","codigo","código","producto","item"]);
+
+    let startRow = 0;
+    if(idxLoc !== -1 && (idxQty !== -1)) startRow = 1;
+
+    function lastNumericFromCols(cols){
+      for(let j=cols.length-1; j>=0; j--){
+        const cleaned = String(cols[j]||"").replace(/[^\d.-]/g,'');
+        if(cleaned === "" || cleaned === "-" || cleaned === "." ) continue;
+        const n = Number(cleaned);
+        if(Number.isFinite(n)) return n;
+      }
+      return 0;
+    }
+
+    for(let i=startRow;i<lines.length;i++){
+      const cols = splitLineLocal(lines[i]);
+      if(cols.length < 2) continue;
+
+      const loc = (idxLoc!==-1 ? (cols[idxLoc]||"") : findLocInCols(cols)).trim();
+      const zona = (idxZona!==-1 && cols[idxZona]) ? String(cols[idxZona]).trim() : "";
+      const variante = (idxVar!==-1 && cols[idxVar]) ? String(cols[idxVar]).trim() : "";
+
+      let q = 0;
+      if(idxQty !== -1){
+        const tryVals = [];
+        tryVals.push(cols[idxQty]);
+        if(cols[idxQty+1] && normalizeHeader(cols[idxQty+1])==="quantity") {
+        } else {
+          tryVals.push(cols[idxQty+1]);
+        }
+        for(const v of tryVals){
+          const cleaned = String(v||"").replace(/[^\d.-]/g,'');
+          const n = Number(cleaned);
+          if(Number.isFinite(n)) { q = n; break; }
+        }
+        if(!Number.isFinite(q) || q===0){
+          q = lastNumericFromCols(cols);
+        }
+      }else{
+        q = lastNumericFromCols(cols);
+      }
+
+      stockRowsParsed.push({ loc, zona, variante, qty: q });
+
+      if(!isValidLoc(loc)) continue;
+      stockMap.set(loc, (stockMap.get(loc)||0) + q);
+      // Marca ubicación como Material de Empaque si el código está en la lista y tiene stock
+      if(q>0 && variante && isPackCode(variante)) packLocSet.add(loc);
+
+      if(variante){
+        const byVar = stockItemsMap.get(loc) || new Map();
+        byVar.set(variante, (byVar.get(variante)||0) + q);
+        stockItemsMap.set(loc, byVar);
+      }
+    }
+  }
+
+  
+  // Parse números con separadores locales (ej: 8.680 / 868,0 / 1,234.56)
+  function parseNumberSmart(val){
+    let s = String(val ?? "").trim();
+    if(!s) return NaN;
+    s = s.replace(/\s+/g, "");
+    // deja solo dígitos y separadores
+    s = s.replace(/[^0-9,.-]/g, "");
+
+    const hasComma = s.includes(",");
+    const hasDot = s.includes(".");
+
+    if(hasComma && hasDot){
+      // el último separador suele ser el decimal
+      if(s.lastIndexOf(",") > s.lastIndexOf(".")){
+        // coma decimal, puntos miles
+        s = s.replace(/\./g, "");
+        s = s.replace(",", ".");
+      } else {
+        // punto decimal, comas miles
+        s = s.replace(/,/g, "");
+      }
+    } else if(hasComma && !hasDot){
+      const parts = s.split(",");
+      // si no es miles (3 dígitos), asume coma decimal
+      if(parts.length === 2 && parts[1].length !== 3){
+        s = parts[0].replace(/\./g, "") + "." + parts[1];
+      } else {
+        s = s.replace(/,/g, "");
+      }
+    } else if(hasDot && !hasComma){
+      const parts = s.split(".");
+      // si tiene un punto y 3 dígitos al final, asume miles
+      if(parts.length === 2 && parts[1].length === 3){
+        s = parts[0] + parts[1];
+      }
+    }
+    const n = Number(s);
+    return Number.isFinite(n) ? n : NaN;
+  }
+
+function parseMoves(text){
+    movesRowsParsed = [];
+    movesByMonth = new Map();
+    movesMonths = [];
+
+    const raw = (text||"").trim();
+    if(!raw){
+      rebuildMonthSelector();
+      return;
+    }
+
+    const lines = raw.split(/\r?\n/).filter(l=>l.trim().length>0);
+    if(lines.length===0){
+      rebuildMonthSelector();
+      return;
+    }
+
+    const first = lines[0];
+    let delim = "\t";
+    if(first.includes("\t")) delim = "\t";
+    else if(first.includes(",")) delim = ",";
+    else delim = null;
+
+    function splitLineLocal(line){
+      if(delim===null) return line.trim().split(/\s+/);
+      return line.split(delim).map(s=>String(s||"").trim());
+    }
+
+    const header = splitLineLocal(lines[0]);
+    const headerNorm = header.map(normalizeHeader);
+
+    const idxCode = findIndex(headerNorm, ["product code","codigo","código","sku","item"]);
+    const idxDate = findIndex(headerNorm, ["movement date","fecha","date"]);
+    const idxDesc = findIndex(headerNorm, ["description","descripcion","descripción","comentario","comment"]);
+    const idxUser = findIndex(headerNorm, ["user name","usuario","responsable"]);
+    const idxFrom = findIndex(headerNorm, ["from location","from locatio","from","origen"]);
+    const idxTo   = findIndex(headerNorm, ["to location","to locatio","to","destino"]);
+    const idxQty  = findIndex(headerNorm, ["moved quantity","moved quanti","moved qty","quantity","cantidad","qty"]);
+    const idxOrder= findIndex(headerNorm, ["from order","order","documento","doc"]);
+
+    let startRow = 0;
+    if(idxFrom!==-1 && idxTo!==-1 && idxQty!==-1) startRow = 1;
+
+    for(let i=startRow;i<lines.length;i++){
+      const cols = splitLineLocal(lines[i]);
+      if(cols.length < 3) continue;
+
+      const code = (idxCode!==-1 ? cols[idxCode] : "");
+      const dateRaw = (idxDate!==-1 ? cols[idxDate] : "");
+      const desc = (idxDesc!==-1 ? cols[idxDesc] : "");
+      const user = (idxUser!==-1 ? cols[idxUser] : "");
+      const from = (idxFrom!==-1 ? cols[idxFrom] : "");
+      const to   = (idxTo!==-1 ? cols[idxTo] : "");
+      let qtyRaw = (idxQty!==-1 ? cols[idxQty] : "");
+      const qty = parseNumberSmart(qtyRaw);
+      const q = Number.isFinite(qty) ? Math.round(qty) : 0;
+      const order = (idxOrder!==-1 ? cols[idxOrder] : "");
+
+      const dt = parseAnyDate(dateRaw);
+      const monthKey = dt ? `${dt.getFullYear()}-${pad2(dt.getMonth()+1)}` : "SIN-FECHA";
+      const row = {
+        code: String(code||"").trim(),
+        dateRaw: String(dateRaw||"").trim(),
+        dt,
+        desc: String(desc||"").trim(),
+        user: String(user||"").trim(),
+        from: String(from||"").trim(),
+        to: String(to||"").trim(),
+        qty: q,
+        order: String(order||"").trim(),
+        monthKey,
+
+        productCode: String(code||"").trim(),
+        movementDate: String(dateRaw||"").trim(),
+        description: String(desc||"").trim(),
+        userName: String(user||"").trim(),
+        fromOrder: String(order||"").trim()
+      };
+      movesRowsParsed.push(row);
+
+      const arr = movesByMonth.get(monthKey) || [];
+      arr.push(row);
+      movesByMonth.set(monthKey, arr);
+    }
+
+    movesMonths = Array.from(movesByMonth.keys())
+      .sort((a,b)=>{
+        if(a==="SIN-FECHA") return 1;
+        if(b==="SIN-FECHA") return -1;
+        return a.localeCompare(b);
+      })
+      .map(k=>({ key:k, label: monthLabel(k) }));
+
+    rebuildMonthSelector();
+  }
+
+  function rebuildMonthSelector(){
+    const selMonth = document.getElementById("selMonth");
+    if(!selMonth) return;
+    selMonth.innerHTML = "";
+
+    // Grupo 1: Mes en curso (pegado)
+    const optg1 = document.createElement("optgroup");
+    optg1.label = "Mes en curso (pegado)";
+    const currentKeys = movesMonths.map(m=>m.key);
+    if(currentKeys.length){
+      for(const m of movesMonths){
+        const opt = document.createElement("option");
+        opt.value = `CUR|${m.key}`;
+        opt.textContent = `${m.label}`;
+        optg1.appendChild(opt);
+      }
+    }else{
+      const opt = document.createElement("option");
+      opt.value = "CUR|SIN-DATOS";
+      opt.textContent = "Sin datos (pega Panel 3)";
+      optg1.appendChild(opt);
+    }
+    selMonth.appendChild(optg1);
+
+    // Grupo 2: Meses cerrados (snapshots)
+    const snapKeys = Object.keys(ioSnaps || {}).sort((a,b)=>a.localeCompare(b));
+    const optg2 = document.createElement("optgroup");
+    optg2.label = "Meses cerrados (snapshot)";
+    if(snapKeys.length){
+      for(const k of snapKeys){
+        const opt = document.createElement("option");
+        opt.value = `SNAP|${k}`;
+        opt.textContent = `${monthLabel(k)} (CERRADO)`;
+        optg2.appendChild(opt);
+      }
+    }else{
+      const opt = document.createElement("option");
+      opt.value = "SNAP|NONE";
+      opt.textContent = "Sin cierres todavía";
+      opt.disabled = true;
+      optg2.appendChild(opt);
+    }
+    selMonth.appendChild(optg2);
+
+    // default: último mes en curso si existe, si no el primero cerrado
+    if(currentKeys.length){
+      selMonth.value = `CUR|${movesMonths[movesMonths.length-1].key}`;
+    }else if(snapKeys.length){
+      selMonth.value = `SNAP|${snapKeys[snapKeys.length-1]}`;
+    }else{
+      selMonth.value = "CUR|SIN-DATOS";
+    }
+
+    selMonth.onchange = ()=> renderInboundOutbound();
+  }
+
+  function parseAnyDate(v){
+    const s = String(v||"").trim();
+    if(!s) return null;
+
+    let m = s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+    if(m){
+      const y = parseInt(m[1],10), mo = parseInt(m[2],10), d = parseInt(m[3],10);
+      if(y && mo>=1 && mo<=12 && d>=1 && d<=31) return new Date(y, mo-1, d);
+    }
+
+    m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+    if(m){
+      let a = parseInt(m[1],10), b = parseInt(m[2],10), y = parseInt(m[3],10);
+      if(y<100) y += 2000;
+      let day=a, mo=b;
+      if(a<=12 && b<=12){
+        day=a; mo=b;
+      }else if(a>12 && b<=12){
+        day=a; mo=b;
+      }else if(b>12 && a<=12){
+        day=b; mo=a;
+      }
+      if(y && mo>=1 && mo<=12 && day>=1 && day<=31) return new Date(y, mo-1, day);
+    }
+
+    const d2 = new Date(s);
+    if(!isNaN(d2.getTime())) return d2;
+    return null;
+  }
+
+  function monthLabel(key){
+    if(key==="SIN-FECHA") return "Sin fecha";
+    const [y, m] = key.split("-").map(x=>parseInt(x,10));
+    const months = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+    const name = months[(m||1)-1] || key;
+    return `${name} ${y}`;
+  }
+
+  function isPL(loc){
+    const t = String(loc||"").trim().toLowerCase();
+    if(!t) return false;
+    return /\bpl\b/.test(t) || t.startsWith("pl ");
+  }
+
+  // ✅ reglas Outbound como pediste
+  function isExcludedOutboundFrom(fromL){
+    fromL = (fromL||"").toLowerCase();
+    if(!fromL.trim()) return true;
+    const bad = ["return","pl","d_picking","procesos_cw","cyclecount","inbound"];
+    return bad.some(k=> fromL.includes(k));
+  }
+
+  function computeIOMetrics(rows, monthKey){
+    let air=0, sea=0, compraLocal=0, armados=0, outboundUnits=0;
+    const det = {
+      inbound_air: [],
+      inbound_sea: [],
+      inbound_compra_local: [],
+      inbound_armados: [],
+      outbound_pl: []
     };
 
-    // Validación básica para evitar “blanco”
-    const requiredKeys = ["apiKey","authDomain","projectId","appId"];
-    const missing = requiredKeys.filter(k => !firebaseConfig?.[k]);
-    if(missing.length){
-      log("❌ Falta configurar firebaseConfig. Keys faltantes:", missing);
-      log("➡️ Pega tu firebaseConfig real en el HTML (sección 2).");
-      kErr.textContent = "Falta firebaseConfig";
-      kErr.style.color = "var(--red)";
-      throw new Error("firebaseConfig incompleto");
+    // inbound excluye TO (como ya tenías)
+    const EXCL_INBOUND_TO = ["pl","d_picking","procesos_cw","cyclecount","return"];
+    function isExcludedInboundTo(toL){
+      toL = (toL||"").toLowerCase().trim();
+      return EXCL_INBOUND_TO.some(k => toL === k || toL.includes(k));
     }
 
-    const app = initializeApp(firebaseConfig);
-    const db  = getFirestore(app);
-    const auth = getAuth(app);
-    const provider = new GoogleAuthProvider();
+    for(const r of rows){
+      const fromL = String(r.from||"").toLowerCase();
+      const toL = String(r.to||"").toLowerCase();
+      const desc = String(r.desc||"").toLowerCase();
 
-    /**********************
-     * 3) UI refs
-     **********************/
-    const authDot = document.getElementById('authDot');
-    const authText = document.getElementById('authText');
-    const btnLogin = document.getElementById('btnLogin');
-    const btnLogout = document.getElementById('btnLogout');
+      const inbound = fromL.includes("inbound");
+      if(inbound){
+        if(isExcludedInboundTo(r.to)) continue;
 
-    const monthIdEl = document.getElementById('monthId');
-    const docIdEl = document.getElementById('docId');
-    const payloadEl = document.getElementById('payload');
-
-    const kUser  = document.getElementById('kUser');
-    const kEmail = document.getElementById('kEmail');
-
-    // Set mes por defecto YYYY-MM (fecha local)
-    const now = new Date();
-    const yyyy = now.getFullYear();
-    const mm = String(now.getMonth()+1).padStart(2,'0');
-    if(!monthIdEl.value) monthIdEl.value = `${yyyy}-${mm}`;
-
-    function setAuthUI(user){
-      if(user){
-        authDot.classList.add('ok');
-        authDot.classList.remove('bad');
-        authText.textContent = "Logueado";
-        btnLogout.disabled = false;
-        kUser.textContent = user.displayName || "—";
-        kEmail.textContent = user.email || "—";
-        log("✅ AUTH:", user.email);
-      } else {
-        authDot.classList.remove('ok');
-        authDot.classList.add('bad');
-        authText.textContent = "No logueado";
-        btnLogout.disabled = true;
-        kUser.textContent = "—";
-        kEmail.textContent = "—";
-        log("ℹ️ AUTH: NO LOGUEADO");
-      }
-    }
-
-    onAuthStateChanged(auth, (user) => setAuthUI(user));
-
-    btnLogin.addEventListener('click', async () => {
-      try{
-        log("🔐 Intentando login Google...");
-        const res = await signInWithPopup(auth, provider);
-        log("✅ Login OK:", res.user.email);
-      }catch(err){
-        log("❌ Login falló:", err);
-        kErr.textContent = err?.message || "Login falló";
-        kErr.style.color = "var(--red)";
-        alert("No se pudo loguear. Revisa el LOG/Console (F12).");
-      }
-    });
-
-    btnLogout.addEventListener('click', async () => {
-      try{
-        await signOut(auth);
-        log("👋 Logout OK");
-      }catch(err){
-        log("❌ Logout falló:", err);
-      }
-    });
-
-    document.getElementById('btnClearLog').addEventListener('click', () => {
-      logBox.textContent = "";
-      kErr.textContent = "—";
-      kErr.style.color = "";
-      log("🧹 Log limpiado");
-    });
-
-    /**********************
-     * 4) Helpers: parse payload
-     **********************/
-    function parsePayload(){
-      const raw = payloadEl.value.trim();
-      let obj;
-      try{
-        obj = JSON.parse(raw);
-      }catch(err){
-        throw new Error("Payload JSON inválido. Corrige el formato.");
-      }
-      // reemplazar marcador de timestamp
-      const walk = (v) => {
-        if(v === "__SERVER_TIMESTAMP__") return serverTimestamp();
-        if(Array.isArray(v)) return v.map(walk);
-        if(v && typeof v === "object"){
-          const out = {};
-          for(const [k,val] of Object.entries(v)) out[k] = walk(val);
-          return out;
+        if(toL.includes("compra local")){
+          compraLocal += r.qty; det.inbound_compra_local.push(r);
+        }else if(toL.includes("armados_cw") || toL.includes("armados cw") || toL.includes("armados")){
+          armados += r.qty; det.inbound_armados.push(r);
+        }else if(desc.includes("air")){
+          air += r.qty; det.inbound_air.push(r);
+        }else{
+          sea += r.qty; det.inbound_sea.push(r);
         }
-        return v;
+      }
+
+      // outbound (KPI Bulk units - outbound)
+      if(isPL(r.to) && String(r.from||"").trim()!=="" && !isExcludedOutboundFrom(r.from)){
+        outboundUnits += r.qty;
+        det.outbound_pl.push(r);
+      }
+    }
+
+    const importUnits = air + sea;
+    const palletsInbound = Math.ceil((importUnits||0) / 1500);
+    const boxesInbound   = Math.ceil((importUnits||0) / 30);
+
+    const man = ioManual[monthKey] || { taggedUnits:0, importPallets:[] };
+    const taggedUnits = Number(man.taggedUnits)||0;
+
+    const boxesOutbound = Math.ceil((outboundUnits||0)/30);
+    const palletsOutbound = Math.ceil((outboundUnits||0)/1500);
+
+    return {
+      air, sea, compraLocal, armados,
+      importUnits, palletsInbound, boxesInbound,
+      outboundUnits, palletsOutbound, boxesOutbound,
+      taggedUnits,
+      det
+    };
+  }
+
+  // ✅ Quincenas para facturación: 1era 15na y 2da 15na (solo para Bulk units - inbound)
+  function computeImportUnitsByDayRange(rows, dayFrom, dayTo){
+    let air=0, sea=0;
+
+    // mismas reglas inbound (excluye TO)
+    const EXCL_INBOUND_TO = ["pl","d_picking","procesos_cw","cyclecount","return"];
+    function isExcludedInboundTo(toL){
+      toL = (toL||"").toLowerCase().trim();
+      return EXCL_INBOUND_TO.some(k => toL === k || toL.includes(k));
+    }
+
+    for(const r of rows){
+      if(!r || !r.dt) continue;
+      const d = r.dt.getDate();
+      if(d < dayFrom || d > dayTo) continue;
+
+      const fromL = String(r.from||"").toLowerCase();
+      const toL   = String(r.to||"").toLowerCase();
+      const desc  = String(r.desc||"").toLowerCase();
+
+      const inbound = fromL.includes("inbound");
+      if(!inbound) continue;
+      if(isExcludedInboundTo(r.to)) continue;
+
+      // quincena solo aplica a importUnits (AIR + Contenedor); excluye Compra Local y Armados
+      if(toL.includes("compra local")) continue;
+      if(toL.includes("armados_cw") || toL.includes("armados cw") || toL.includes("armados")) continue;
+
+      if(desc.includes("air")) air += (Number(r.qty)||0);
+      else sea += (Number(r.qty)||0);
+    }
+
+    return air + sea;
+  }
+
+
+  function renderInboundOutbound(){
+    const selMonth = document.getElementById("selMonth");
+    const kpisWrap = document.getElementById("kpisInbound");
+    if(!kpisWrap) return;
+
+    const rawSel = selMonth && selMonth.value ? selMonth.value : "CUR|SIN-DATOS";
+    const [mode, key] = rawSel.split("|");
+    const isSnap = mode === "SNAP";
+
+    let monthKey = key || "SIN-FECHA";
+    let rows = [];
+
+    if(isSnap){
+      const snap = ioSnaps[monthKey];
+      if(!snap){
+        kpisWrap.innerHTML = `<div class="kpi">No hay snapshot para ${monthLabel(monthKey)}</div>`;
+        return;
+      }
+      rows = snap.rows.map(min => inflateMoveRow(min, monthKey));
+      // en snap usamos taggedUnits del snapshot (congelado)
+      ioManual[monthKey] = ioManual[monthKey] || { taggedUnits:0, importPallets:[] };
+      ioManual[monthKey].taggedUnits = snap.taggedUnits || 0;
+    }else{
+      rows = movesByMonth.get(monthKey) || [];
+    }
+
+    const m = computeIOMetrics(rows, monthKey);
+
+    // quincenas (para facturación): dentro del mes seleccionado
+    const q1Import = computeImportUnitsByDayRange(rows, 1, 15);
+    const q2Import = computeImportUnitsByDayRange(rows, 16, 31);
+
+    const kpis = [
+      { id:"in_air", label:"✈️ Unidades Importación (AIR)", value: m.air, sub:"From=inbound & Description contiene AIR", detailKey:"inbound_air" },
+      { id:"in_sea", label:"🚢 Unidades Importación (Contenedor)", value: m.sea, sub:"From=inbound & no AIR → SEA", detailKey:"inbound_sea" },
+      { id:"in_local", label:"🏪 Unidades Compra Local", value: m.compraLocal, sub:"From=inbound & To contiene Compra Local", detailKey:"inbound_compra_local" },
+      { id:"in_arm", label:"🧩 Armados", value: m.armados, sub:"From=inbound & To contiene Armados_CW", detailKey:"inbound_armados" },
+      { id:"in_tag", label:"🏷️ Unidades Etiquetadas (manual)", value: m.taggedUnits, sub:isSnap ? "Snapshot (cerrado)" : "Ingresadas manualmente por mes", detailKey:null },
+
+      { id:"bulk_units_in", label:"📦 Bulk units - inbound", value: m.importUnits, sub:"AIR + Contenedor", detailKey:"inbound_import_all" },
+      { id:"bulk_pallets_in", label:"🧱 Bulk pallets - inbound", value: m.palletsInbound, sub:"ceil(unidades/1500)", detailKey:null },
+      { id:"bulk_boxes_in", label:"📦 Bulk boxes - inbound", value: m.boxesInbound, sub:"ceil(unidades/30)", detailKey:null },
+
+      { id:"bulk_units_out", label:"➡️ Bulk units - outbound", value: m.outboundUnits, sub:"To contiene PL & From no vacío (con exclusiones)", detailKey:"outbound_pl" },
+      { id:"bulk_pallets_out", label:"🧱 Bulk pallets - outbound", value: m.palletsOutbound, sub:"ceil(unidades/1500)", detailKey:null },
+      { id:"bulk_boxes_out", label:"📦 Bulk boxes - outbound", value: m.boxesOutbound, sub:"ceil(unidades/30)", detailKey:null },
+    ];
+
+    kpisWrap.classList.add("kpis","io");
+    kpisWrap.innerHTML = "";
+
+    const accentMap = {
+      in_air: "air",
+      in_sea: "sea",
+      in_local: "local",
+      in_arm: "arm",
+      in_tag: "tag",
+      bulk_units_in: "bulkIn",
+      bulk_pallets_in: "bulkIn",
+      bulk_boxes_in: "bulkIn",
+      bulk_units_out: "bulkOut",
+      bulk_pallets_out: "bulkOut",
+      bulk_boxes_out: "bulkOut"
+    };
+
+    for(const k of kpis){
+      const div = document.createElement("div");
+      const group = (k.id||"").includes("_out") ? "Outbound" : "Inbound";
+      const clickable = !!k.detailKey;
+
+      div.className = "kpi io" + (clickable ? " clickable" : "");
+      div.dataset.accent = accentMap[k.id] || "";
+
+      // ✅ Botón “Gráfico” dentro del KPI Bulk units - outbound
+      const hasChart = k.id === "bulk_units_out";
+      // ✅ Botones por quincena dentro del KPI Bulk units - inbound
+      const hasQuincena = k.id === "bulk_units_in";
+      div.innerHTML = `
+        <div class="kpiTop"></div>
+        ${hasChart ? `
+          <div class="kpi-fab">
+            <button type="button" class="btn sm" data-chart="outbound">📈</button>
+          </div>` : ``}
+        <div class="kpiBody">
+          <div class="kpiTitleRow">
+            <div class="kpiTitle">${k.label}</div>
+            <div class="kpiBadge">${group}${isSnap ? " • CERRADO" : ""}</div>
+          </div>
+          <div class="value" style="margin-top:10px;">${fmtInt(k.value)}</div>
+          <div class="sub" style="margin-top:6px;">${escapeHtml(k.sub||"")}</div>
+          ${hasQuincena ? `
+            <div class="kpiQuincena" style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+              <button type="button" class="btn xs" data-q="q1">1era 15na</button>
+              <button type="button" class="btn xs" data-q="q2">2da 15na</button>
+            </div>
+          ` : ``}
+        </div>
+      `;
+
+      if(hasChart){
+        const btn = div.querySelector('button[data-chart="outbound"]');
+        if(btn){
+          btn.onclick = (ev)=>{
+            ev.stopPropagation();
+            openOutboundModal(monthKey, rows);
+          };
+        }
+      }
+
+      if(hasQuincena){
+        const b1 = div.querySelector('button[data-q="q1"]');
+        const b2 = div.querySelector('button[data-q="q2"]');
+        const valEl = div.querySelector(".value");
+        const subEl = div.querySelector(".sub");
+
+        // valor total (default)
+        const total = Number(k.value)||0;
+        const v1 = Number(q1Import)||0;
+        const v2 = Number(q2Import)||0;
+
+        function setMode(mode){
+          // mode: "total" | "q1" | "q2"
+          if(!valEl) return;
+          if(mode==="q1"){
+            valEl.textContent = fmtInt(v1);
+            if(subEl) subEl.textContent = "AIR + Contenedor • 1era 15na";
+            b1 && b1.classList.add("active");
+            b2 && b2.classList.remove("active");
+            div.dataset.quincena = "q1";
+          }else if(mode==="q2"){
+            valEl.textContent = fmtInt(v2);
+            if(subEl) subEl.textContent = "AIR + Contenedor • 2da 15na";
+            b2 && b2.classList.add("active");
+            b1 && b1.classList.remove("active");
+            div.dataset.quincena = "q2";
+          }else{
+            valEl.textContent = fmtInt(total);
+            if(subEl) subEl.textContent = escapeHtml(k.sub||"");
+            b1 && b1.classList.remove("active");
+            b2 && b2.classList.remove("active");
+            div.dataset.quincena = "total";
+          }
+        }
+        setMode("total");
+
+        const safeClick = (mode)=> (ev)=>{
+          ev.stopPropagation();
+          // toggle: si ya está activo, vuelve a total
+          const cur = div.dataset.quincena || "total";
+          if(cur===mode) setMode("total");
+          else setMode(mode);
+        };
+        if(b1) b1.onclick = safeClick("q1");
+        if(b2) b2.onclick = safeClick("q2");
+      }
+
+      if(clickable){
+        div.addEventListener("click", ()=>{
+          const key = k.detailKey;
+          let rowsToShow = [];
+          if(key==="inbound_import_all"){
+            // Detalle de Bulk units - inbound: por requerimiento se muestra 2da 15na por defecto
+            const qMode = (div.dataset.quincena || "total"); // total|q1|q2
+            const all = [...m.det.inbound_air, ...m.det.inbound_sea];
+
+            // Si el KPI está en modo quincena, respeta el modo; si está en total, muestra 2da 15na por defecto
+            const effective = (qMode==="q1" || qMode==="q2") ? qMode : "q2";
+            rowsToShow = all.filter(r=>{
+              if(!r || !r.dt) return false;
+              const d = r.dt.getDate();
+              return effective==="q1" ? (d>=1 && d<=15) : (d>=16 && d<=31);
+            });
+          }else{
+            rowsToShow = m.det[key] || [];
+          }
+          showInboundDetail(stripHtml(k.label), monthLabel(monthKey) + (isSnap ? " (CERRADO)" : ""), rowsToShow);
+        });
+      }
+
+      kpisWrap.appendChild(div);
+    }
+
+    // Ajustes del mes (manual) — si estás viendo SNAP: lo dejamos bloqueado “soft”
+    const inpTagged = document.getElementById("inpTaggedUnits");
+    const btnSaveTagged = document.getElementById("btnSaveTagged");
+    const btnClearTagged = document.getElementById("btnClearTagged");
+
+    if(inpTagged){
+      inpTagged.value = String(m.taggedUnits || 0);
+      inpTagged.disabled = isSnap;
+    }
+    if(btnSaveTagged){
+      btnSaveTagged.disabled = isSnap;
+      btnSaveTagged.onclick = ()=>{
+        if(isSnap) return;
+        const v = Number(String(inpTagged?.value||"0").replace(/[^\d.-]/g,""));
+        ioManual[monthKey] = ioManual[monthKey] || { taggedUnits:0, importPallets:[] };
+        ioManual[monthKey].taggedUnits = Number.isFinite(v) ? v : 0;
+        saveIOM();
+        renderInboundOutbound();
       };
-      return walk(obj);
     }
-
-    function monthId(){
-      const m = (monthIdEl.value || "").trim();
-      if(!m) throw new Error("monthId vacío. Ej: 2026-03");
-      return m;
-    }
-
-    function subDocId(){
-      const d = (docIdEl.value || "").trim();
-      if(!d) throw new Error("docId vacío. Ej: movimientos");
-      return d;
-    }
-
-    /**********************
-     * 5) Test WRITE / READ
-     * - datasets/{monthId}/{docId}
-     * - ocupacion_diaria/{docId}
-     **********************/
-    async function testWrite(){
-      // Reglas: write solo si isOwner() => debe estar logueado y email exacto
-      const user = auth.currentUser;
-      if(!user){
-        throw new Error("No estás logueado. Haz Login Google para poder escribir (según tus rules).");
-      }
-
-      const payload = parsePayload();
-
-      const m = monthId();
-      const d = subDocId();
-
-      // 1) datasets/{monthId}/{docId}
-      const refDataset = doc(db, "datasets", m, d);
-      await setDoc(refDataset, {
-        ...payload,
-        _meta: {
-          updatedAt: serverTimestamp(),
-          updatedBy: user.email || null,
-          path: `datasets/${m}/${d}`
-        }
-      }, { merge: true });
-
-      // 2) ocupacion_diaria/{docId}
-      const refOcc = doc(db, "ocupacion_diaria", d);
-      await setDoc(refOcc, {
-        ...payload,
-        _meta: {
-          updatedAt: serverTimestamp(),
-          updatedBy: user.email || null,
-          path: `ocupacion_diaria/${d}`
-        }
-      }, { merge: true });
-
-      return { ok:true, wrote: [`datasets/${m}/${d}`, `ocupacion_diaria/${d}`] };
-    }
-
-    async function testRead(){
-      const m = monthId();
-      const d = subDocId();
-
-      const refDataset = doc(db, "datasets", m, d);
-      const snap1 = await getDoc(refDataset);
-
-      const refOcc = doc(db, "ocupacion_diaria", d);
-      const snap2 = await getDoc(refOcc);
-
-      return {
-        datasets: snap1.exists() ? snap1.data() : null,
-        ocupacion_diaria: snap2.exists() ? snap2.data() : null
+    if(btnClearTagged){
+      btnClearTagged.disabled = isSnap;
+      btnClearTagged.onclick = ()=>{
+        if(isSnap) return;
+        if(inpTagged) inpTagged.value = "0";
+        ioManual[monthKey] = ioManual[monthKey] || { taggedUnits:0, importPallets:[] };
+        ioManual[monthKey].taggedUnits = 0;
+        saveIOM();
+        renderInboundOutbound();
       };
     }
 
-    document.getElementById('btnTestWrite').addEventListener('click', async () => {
-      try{
-        log("🚀 WRITE iniciado...");
-        const res = await testWrite();
-        log("✅ WRITE OK:", res);
-        kErr.textContent = "—";
-        kErr.style.color = "";
-        alert("WRITE OK ✅ (revisa el LOG)");
-      }catch(err){
-        log("❌ WRITE falló:", err);
-        kErr.textContent = err?.message || "WRITE falló";
-        kErr.style.color = "var(--red)";
+    // Botón de gráfico general en header
+    if(btnOpenOutboundChart){
+      btnOpenOutboundChart.disabled = rows.length===0;
+      btnOpenOutboundChart.onclick = ()=> openOutboundModal(monthKey, rows);
+    }
 
-        // Mensaje claro para el caso típico
-        const msg = (err?.message || "").toLowerCase();
-        if(msg.includes("permission") || msg.includes("denied")){
-          alert("WRITE BLOQUEADO ❌\n\nCausa típica: no estás logueado con el correo owner o Auth no está activo.\nRevisa el LOG/Console (F12).");
-        } else {
-          alert("No se pudo escribir. Revisa el LOG/Console (F12).");
+    // Cerrar mes (snapshot)
+    if(btnCloseMonth){
+      btnCloseMonth.disabled = (isSnap || rows.length===0 || monthKey==="SIN-FECHA");
+      btnCloseMonth.onclick = ()=>{
+        if(isSnap) return;
+        if(monthKey==="SIN-FECHA") return alert("⚠️ No se puede cerrar 'Sin fecha'.");
+        if(!confirm(`Cerrar ${monthLabel(monthKey)}: se guardará snapshot y NO se afectará con futuros pegados. ¿Confirmas?`)) return;
+
+        const taggedUnits = Number((ioManual[monthKey]?.taggedUnits)||0);
+        const minRows = rows.map(r=> deflateMoveRow(r));
+        ioSnaps[monthKey] = {
+          createdAt: new Date().toISOString(),
+          taggedUnits,
+          rows: minRows
+        };
+        saveIOSnaps();
+        rebuildMonthSelector();
+        document.getElementById("selMonth").value = `SNAP|${monthKey}`;
+        renderInboundOutbound();
+        alert(`✅ Mes cerrado: ${monthLabel(monthKey)}. Ya es histórico.`);
+      };
+    }
+  }
+
+  function deflateMoveRow(r){
+    // mínimo viable para snapshot (ahorra espacio)
+    return {
+      pc: String(r.productCode||""),
+      md: String(r.movementDate||""),
+      ds: String(r.description||""),
+      un: String(r.userName||""),
+      fr: String(r.from||""),
+      to: String(r.to||""),
+      q: Number(r.qty||0),
+      fo: String(r.fromOrder||"")
+    };
+  }
+  function inflateMoveRow(min, monthKey){
+    const dt = parseAnyDate(min.md);
+    return {
+      code: min.pc,
+      dateRaw: min.md,
+      dt,
+      desc: min.ds,
+      user: min.un,
+      from: min.fr,
+      to: min.to,
+      qty: Number(min.q||0),
+      order: min.fo,
+      monthKey,
+
+      productCode: min.pc,
+      movementDate: min.md,
+      description: min.ds,
+      userName: min.un,
+      fromOrder: min.fo
+    };
+  }
+
+  
+  // === Exportar tabla a Excel (HTML .xls compatible) ===
+  function exportTableToExcel(tableId, filename){
+    const table = document.getElementById(tableId);
+    if(!table){
+      alert("No se encontró la tabla para exportar.");
+      return;
+    }
+
+    // Clonar tabla y reemplazar valores formateados por valores crudos cuando existan
+    const clone = table.cloneNode(true);
+    clone.querySelectorAll("[data-raw]").forEach(el=>{
+      const raw = el.getAttribute("data-raw");
+      if(raw !== null && raw !== undefined){
+        el.textContent = String(raw);
+      }
+    });
+
+    const html = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office"
+            xmlns:x="urn:schemas-microsoft-com:office:excel"
+            xmlns="http://www.w3.org/TR/REC-html40">
+        <head>
+          <meta charset="UTF-8">
+          <!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>
+            <x:Name>Detalle</x:Name>
+            <x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
+          </x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
+        </head>
+        <body>${clone.outerHTML}</body>
+      </html>
+    `;
+    const blob = new Blob([html], {type:"application/vnd.ms-excel;charset=utf-8"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = (filename || "detalle") + ".xls";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 1500);
+  }
+
+
+function showInboundDetail(title, monthLabelText, rows){
+    const bar = document.getElementById("activeKpiBar");
+    if(bar){
+      const lines = rows ? rows.length : 0;
+      bar.style.display = "flex";
+      bar.innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:2px;">
+          <div style="font-weight:800;font-size:13px;">${escapeHtml(title)}</div>
+          <div style="font-size:12px;color:#4b6b72;">${escapeHtml(monthLabelText)} • ${lines} líneas</div>
+        </div>
+        <button type="button" class="btn sm" id="btnBackToKpis">Ver KPIs</button>
+      `;
+      const btn = bar.querySelector("#btnBackToKpis");
+      if(btn){
+        btn.onclick = ()=> document.getElementById("ioKpisWrap").scrollIntoView({behavior:"smooth", block:"start"});
+      }
+    }
+
+    let host = document.getElementById("ioDetailHost");
+    if(!host){
+      host = document.createElement("div");
+      host.id = "ioDetailHost";
+      host.className = "card";
+      host.style.marginTop = "14px";
+      host.innerHTML = `
+        <div class="card-header" style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+          <div>
+            <h3 id="ioDetailTitle" style="margin:0;font-size:16px;">Detalle</h3>
+            <div id="ioDetailMeta" style="margin-top:6px;color:var(--muted);font-size:12.5px;"></div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <button type="button" class="btn sm" id="btnExportIoDetailExcel">Exportar detalle (Excel)</button>
+          </div>
+        </div>
+        <div class="card-body" style="overflow:auto;">
+          <table class="table" id="ioDetailTable">
+            <thead>
+              <tr>
+                <th>Product Code</th>
+                <th>Movement Date</th>
+                <th>Description</th>
+                <th>User Name</th>
+                <th>From Location</th>
+                <th>To Location</th>
+                <th style="text-align:right;">Moved Quantity</th>
+                <th>From Order</th>
+              </tr>
+            </thead>
+            <tbody id="ioDetailBody"></tbody>
+          </table>
+        </div>
+      `;
+      const view = document.getElementById("viewInbound");
+      if(view) view.appendChild(host);
+    }
+
+    const tEl = document.getElementById("ioDetailTitle");
+    const mEl = document.getElementById("ioDetailMeta");
+    const bEl = document.getElementById("ioDetailBody");
+    if(tEl) tEl.textContent = title || "Detalle";
+    if(mEl) mEl.textContent = `${monthLabelText || ""} • ${rows.length} líneas`;
+
+    if(!bEl) return;
+
+    bEl.innerHTML = rows.map(r=>{
+      const pc = stripHtml(String(r.productCode ?? ""));
+      const md = stripHtml(String(r.movementDate ?? ""));
+      const ds = stripHtml(String(r.description ?? ""));
+      const un = stripHtml(String(r.userName ?? ""));
+      const fr = stripHtml(String(r.from ?? ""));
+      const to = stripHtml(String(r.to ?? ""));
+      const qtyNum = Number(r.qty ?? 0);
+      const qty = Number.isFinite(qtyNum) ? fmtInt(qtyNum) : stripHtml(String(r.qty ?? ""));
+      const fo = stripHtml(String(r.fromOrder ?? ""));
+      return `
+        <tr>
+          <td>${pc}</td>
+          <td>${md}</td>
+          <td style="min-width:280px;">${escapeHtml(ds)}</td>
+          <td>${escapeHtml(un)}</td>
+          <td>${escapeHtml(fr)}</td>
+          <td>${escapeHtml(to)}</td>
+          <td style="text-align:right;" data-raw="${qtyNum}">${qty}</td>
+          <td>${escapeHtml(fo)}</td>
+        </tr>
+      `;
+    }).join("");
+
+
+    // Exportación del detalle actual
+    const btnX = document.getElementById("btnExportIoDetailExcel");
+    if(btnX){
+      btnX.onclick = ()=>{
+        const safeMonth = (monthLabelText || "mes").replace(/[^\w\-]+/g,"_");
+        const safeTitle = (title || "detalle").replace(/[^\w\-]+/g,"_");
+        exportTableToExcel("ioDetailTable", `${safeTitle}_${safeMonth}`);
+      };
+    }
+
+    host.scrollIntoView({behavior:"smooth", block:"start"});
+  }
+
+  // ✅ 2) Modal gráfico Outbound (por día)
+  function openOutboundModal(monthKey, rows){
+    if(!modalOutbound || !canvasOutbound) return;
+    const m = computeIOMetrics(rows, monthKey);
+
+    // quincenas (para facturación): dentro del mes seleccionado
+    const q1Import = computeImportUnitsByDayRange(rows, 1, 15);
+    const q2Import = computeImportUnitsByDayRange(rows, 16, 31);
+    const outRows = m.det.outbound_pl || [];
+    const series = groupOutboundByDay(outRows);
+
+    modalMonthLbl.textContent = monthLabel(monthKey);
+    modalOutbound.classList.add("open");
+
+    // top day
+    const top = series.reduce((best, cur)=>{
+      if(!best) return cur;
+      return (cur.value > best.value) ? cur : best;
+    }, null);
+
+    topDayEl.textContent = top ? top.label : "—";
+    topUnitsEl.textContent = top ? fmtInt(top.value) : "—";
+    daysCountEl.textContent = fmtInt(series.length);
+
+    drawLineChart(canvasOutbound, series);
+
+    if(btnExportChartPng){
+      btnExportChartPng.onclick = ()=>{
+        const url = canvasOutbound.toDataURL("image/png");
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `outbound_${monthKey}.png`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      };
+    }
+  }
+
+  function groupOutboundByDay(rows){
+    const map = new Map(); // yyyy-mm-dd -> sum
+    for(const r of rows){
+      const dt = r.dt || parseAnyDate(r.movementDate) || null;
+      if(!dt) continue;
+      const key = `${dt.getFullYear()}-${pad2(dt.getMonth()+1)}-${pad2(dt.getDate())}`;
+      map.set(key, (map.get(key)||0) + (Number(r.qty)||0));
+    }
+    const keys = Array.from(map.keys()).sort((a,b)=>a.localeCompare(b));
+    return keys.map(k=>({ key:k, label: k, value: Math.round(map.get(k)||0) }));
+  }
+
+  function drawLineChart(canvas, series){
+    const ctx = canvas.getContext("2d");
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0,0,w,h);
+
+    // padding
+    const pl=60, pr=18, pt=18, pb=46;
+
+    // axes
+    ctx.strokeStyle = "rgba(15,23,42,.18)";
+    ctx.lineWidth = 1;
+
+    // grid
+    const maxV = Math.max(1, ...series.map(d=>d.value));
+    const steps = 5;
+    for(let i=0;i<=steps;i++){
+      const y = pt + (h-pt-pb)*(i/steps);
+      ctx.beginPath();
+      ctx.moveTo(pl, y);
+      ctx.lineTo(w-pr, y);
+      ctx.stroke();
+    }
+
+    // axis lines
+    ctx.strokeStyle = "rgba(15,23,42,.30)";
+    ctx.beginPath();
+    ctx.moveTo(pl, pt);
+    ctx.lineTo(pl, h-pb);
+    ctx.lineTo(w-pr, h-pb);
+    ctx.stroke();
+
+    // y labels
+    ctx.fillStyle = "rgba(15,23,42,.75)";
+    ctx.font = "700 11px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    for(let i=0;i<=steps;i++){
+      const v = Math.round(maxV*(1 - i/steps));
+      const y = pt + (h-pt-pb)*(i/steps);
+      ctx.fillText(fmtInt(v), pl-8, y);
+    }
+
+    if(series.length===0){
+      ctx.fillStyle = "rgba(100,116,139,.9)";
+      ctx.font = "800 14px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("Sin datos outbound para graficar", w/2, h/2);
+      return;
+    }
+
+    const x0 = pl, x1 = w-pr;
+    const y0 = h-pb, y1 = pt;
+
+    const xStep = series.length===1 ? 0 : (x1-x0)/(series.length-1);
+
+    // line
+    ctx.strokeStyle = "rgba(239,68,68,.78)";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    series.forEach((d,i)=>{
+      const x = x0 + xStep*i;
+      const y = y0 - (d.value/maxV)*(y0-y1);
+      if(i===0) ctx.moveTo(x,y);
+      else ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+
+    // points
+    ctx.fillStyle = "rgba(239,68,68,.90)";
+    series.forEach((d,i)=>{
+      const x = x0 + xStep*i;
+      const y = y0 - (d.value/maxV)*(y0-y1);
+      ctx.beginPath();
+      ctx.arc(x,y,3.5,0,Math.PI*2);
+      ctx.fill();
+    });
+
+    // value labels (units per day)
+    ctx.fillStyle = "rgba(15,23,42,.82)";
+    ctx.font = "800 10px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    series.forEach((d,i)=>{
+      const x = x0 + xStep*i;
+      const y = y0 - (d.value/maxV)*(y0-y1);
+      const ty = Math.max(y1 + 10, y - 10);
+      ctx.fillText(fmtInt(d.value), x, ty);
+    });
+
+    // x labels (short date for each day)
+    const monEs = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+    const shortLbl = (key)=>{
+      // key: yyyy-mm-dd
+      const dd = key.slice(8);
+      const mm = parseInt(key.slice(5,7), 10);
+      const m = (mm>=1 && mm<=12) ? monEs[mm-1] : key.slice(5,7);
+      return `${dd}-${m}`;
+    };
+
+    ctx.fillStyle = "rgba(15,23,42,.75)";
+    ctx.font = "700 10px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+
+    for(let i=0;i<series.length;i++){
+      const d = series[i];
+      const x = x0 + xStep*i;
+      const lbl = shortLbl(d.key);
+      ctx.fillText(lbl, x, y0+10);
+    }
+    // axis label
+    ctx.textAlign = "left";
+    ctx.fillStyle = "rgba(100,116,139,.9)";
+    ctx.fillText("Fecha", pl, y0+28);
+  }
+
+  function drawLineChartPct(canvas, series){
+    // series: [{label, value}] where value is % (0-100)
+    const ctx = canvas.getContext("2d");
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0,0,w,h);
+
+    const pl=60, pr=18, pt=18, pb=46;
+
+    const maxV = Math.max(1, ...series.map(d=>d.value));
+    const steps = 5;
+
+    // grid
+    ctx.strokeStyle = "rgba(15,23,42,.18)";
+    ctx.lineWidth = 1;
+    for(let i=0;i<=steps;i++){
+      const y = pt + (h-pt-pb)*(i/steps);
+      ctx.beginPath();
+      ctx.moveTo(pl, y);
+      ctx.lineTo(w-pr, y);
+      ctx.stroke();
+    }
+
+    // axes
+    ctx.strokeStyle = "rgba(15,23,42,.30)";
+    ctx.beginPath();
+    ctx.moveTo(pl, pt);
+    ctx.lineTo(pl, h-pb);
+    ctx.lineTo(w-pr, h-pb);
+    ctx.stroke();
+
+    // y labels
+    ctx.fillStyle = "rgba(15,23,42,.75)";
+    ctx.font = "700 11px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    for(let i=0;i<=steps;i++){
+      const v = (maxV*(1 - i/steps));
+      const y = pt + (h-pt-pb)*(i/steps);
+      ctx.fillText(v.toFixed(1)+"%", pl-8, y);
+    }
+
+    if(series.length===0){
+      ctx.fillStyle = "rgba(100,116,139,.9)";
+      ctx.font = "800 14px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("Sin datos guardados aún.", w/2, h/2);
+      return;
+    }
+
+    const x0 = pl, x1 = w-pr;
+    const y0 = h-pb, y1 = pt;
+
+    const xs = series.map((d,i)=> x0 + (x1-x0)*(series.length===1 ? 0.5 : i/(series.length-1)));
+    const ys = series.map(d => y0 - (y0-y1)*(d.value/maxV));
+
+    // line
+    ctx.strokeStyle = "rgba(239, 68, 68, .95)";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    xs.forEach((x,i)=>{
+      const y = ys[i];
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+
+    // points + value labels
+    for(let i=0;i<xs.length;i++){
+      const x = xs[i], y = ys[i];
+      ctx.fillStyle = "#ef4444";
+      ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2); ctx.fill();
+
+      const txt = series[i].value.toFixed(2)+"%";
+      ctx.fillStyle = "rgba(15,23,42,.85)";
+      ctx.font = "800 10.5px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      ctx.fillText(txt, x, y-8);
+    }
+
+    // x labels (fecha corta)
+    ctx.fillStyle = "rgba(15,23,42,.75)";
+    ctx.font = "700 11px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    const maxTicks = Math.min(series.length, 14);
+    const step = Math.max(1, Math.floor(series.length/maxTicks));
+    for(let i=0;i<series.length;i+=step){
+      const x = xs[i];
+      const label = series[i].label;
+      ctx.fillText(label, x, y0+10);
+    }
+  }
+
+
+  if(btnCloseModalOutbound){
+    btnCloseModalOutbound.onclick = ()=> modalOutbound.classList.remove("open");
+  }
+  if(modalOutbound){
+    modalOutbound.addEventListener("click", (e)=>{
+      if(e.target === modalOutbound) modalOutbound.classList.remove("open");
+    });
+  }
+
+  function splitLine(line, delim){
+    if(delim === "\t") return line.split("\t");
+    if(delim === ",") return line.split(",").map(s=>s.trim());
+    return line.trim().split(/\s{2,}|\s+\t|\t+\s+|\s+/).filter(Boolean);
+  }
+
+  function findIndex(headers, variants){
+    for(const v of variants){
+      const vn = normalizeHeader(v);
+      const idx = headers.findIndex(h=>h===vn);
+      if(idx !== -1) return idx;
+    }
+    for(const v of variants){
+      const vn = normalizeHeader(v);
+      const idx = headers.findIndex(h=>h.includes(vn) || vn.includes(h));
+      if(idx !== -1) return idx;
+    }
+    return -1;
+  }
+
+  function findLocInCols(cols){
+    for(const c of cols){
+      const s = String(c||"").trim();
+      if(isValidLoc(s)) return s;
+    }
+    return "";
+  }
+
+  function computeTransitoryUnits(){
+    let totalUnits = 0;
+    for(const r of stockRowsParsed){
+      const loc = String(r.loc||"").trim();
+      if(isTransitoryLocName(loc)) totalUnits += Number(r.qty)||0;
+    }
+    const need = Math.ceil(totalUnits / 1500);
+    state.transitory = { units: totalUnits, need, allocated: 0 };
+    return need;
+  }
+
+  function allocateTransitory(derived){
+    const totalUnits = stockRowsParsed.reduce((acc,r)=>{
+      if(isTransitoryLocName(r.loc)) return acc + (Number(r.qty)||0);
+      return acc;
+    },0);
+    const need = Math.ceil(totalUnits / 1500);
+    if(!need){
+      state.transitory = {units:0, need:0, allocated:0};
+      return;
+    }
+
+    const emptyLocs = [];
+    for(let mod=90; mod>=1; mod--){
+      const m = String(mod).padStart(3,"0");
+      for(let pos=1; pos<=7; pos++){
+        const p = String(pos).padStart(2,"0");
+        const loc = `01-30-${m}-${p}`;
+        const d = derived.get(loc);
+        if(d && d.state==="empty") emptyLocs.push(loc);
+      }
+    }
+
+    let remaining = totalUnits;
+    let allocated = 0;
+    for(let i=0; i<need && i<emptyLocs.length; i++){
+      const loc = emptyLocs[i];
+      const share = Math.min(1500, remaining);
+      remaining -= share;
+      allocated++;
+      derived.set(loc, {state:"transit", qty:0, manualCategory:"Transitorio", transitoryUnits:share});
+    }
+
+    state.transitory = {units: totalUnits, need, allocated};
+  }
+
+  function applyDerived(){
+    derived = new Map();
+
+    const manualMap = new Map();
+    for(const o of manualOverrides){
+      for(const loc of o.locs){
+        manualMap.set(loc, o.category);
+      }
+    }
+
+    const lowEnabled = chkLowStock.checked;
+    let lowTh = parseInt(String(inpLowStock.value||"10").replace(/\D/g,''),10);
+    if(!Number.isFinite(lowTh)) lowTh = 10;
+
+    for(const loc of catalog){
+      const manualCat = manualMap.get(loc);
+      if(manualCat){
+        const cfg = catConfig[manualCat] || DEFAULT_MANUAL_CFG;
+        derived.set(loc, {
+          state: cfg.state,
+          qty: stockMap.get(loc)||0,
+          manualCategory: manualCat
+        });
+        continue;
+      }
+
+      const qty = stockMap.get(loc) || 0;
+      if(qty > 0){
+        // Prioridad: Material de Empaque (solo si tiene stock)
+        if(packLocSet.has(loc)){
+          derived.set(loc, { state:"pack", qty, manualCategory:"M. Empaque" });
+        }else if(lowEnabled && qty <= lowTh){
+          derived.set(loc, { state:"low", qty, manualCategory:"" });
+        }else{
+          derived.set(loc, { state:"stock", qty, manualCategory:"" });
         }
+      }else{
+        derived.set(loc, { state:"empty", qty:0, manualCategory:"" });
+      }
+    }
+
+    // transitorio
+    computeTransitoryUnits();
+    allocateTransitory(derived);
+  }
+
+  function updateKPIs(){
+    let filledStock=0, filledManual=0, empty=0, blocked=0;
+
+    for(const loc of catalog){
+      const d = derived.get(loc);
+      if(!d){ empty++; continue; }
+
+      if(d.state === "block"){
+        blocked++;
+        continue; // no cuenta como llena ni vacía: queda fuera del catálogo disponible
+      }
+
+      if(d.state === "manual" || d.state === "reserve"){
+        filledManual++;
+      }else if(d.state === "stock" || d.state === "low" || d.state === "transit"){
+        filledStock++;
+      }else{
+        empty++;
+      }
+    }
+
+    const effectiveTotal = Math.max(0, TOTAL - blocked);
+    const effectiveEmpty = Math.max(0, effectiveTotal - filledStock - filledManual);
+
+    // KPIs principales
+    if(kTotal) kTotal.textContent = String(effectiveTotal);
+    if(kTotalSub){
+      kTotalSub.textContent = blocked>0
+        ? `90 módulos × 7 posiciones • Bloqueadas: ${blocked}`
+        : "90 módulos × 7 posiciones";
+    }
+
+    kStock.textContent = String(filledStock);
+    kManual.textContent = String(filledManual);
+    kEmpty.textContent = String(effectiveEmpty);
+
+    const occ = effectiveTotal>0 ? ((filledStock + filledManual) / effectiveTotal) * 100 : 0;
+    kOcc.textContent = occ.toFixed(1) + "%";
+
+    const t = state?.transitory || {units:0, need:0, allocated:0};
+    if(kTransit) kTransit.textContent = String(t.allocated || 0);
+    if(kTransitSub){
+      if((t.units||0)>0){
+        kTransitSub.textContent = `Unidades: ${fmtInt(t.units)} | Necesarias: ${t.need || 0} | Asignadas: ${t.allocated || 0}`;
+      }else{
+        kTransitSub.textContent = "Sin ubicaciones especiales detectadas";
+      }
+    }
+  }
+
+  function fmtInt(n){
+    const x = Math.round(Number(n)||0);
+    return x.toLocaleString("es-EC");
+  }
+
+  function escapeHtml(s){
+    return String(s||"")
+      .replace(/&/g,"&amp;")
+      .replace(/</g,"&lt;")
+      .replace(/>/g,"&gt;")
+      .replace(/"/g,"&quot;")
+      .replace(/'/g,"&#39;");
+  }
+  function stripHtml(s){
+    return String(s||"").replace(/<[^>]*>/g,"").replace(/\s+/g," ").trim();
+  }
+
+  function renderManualTable(){
+    manualTable.innerHTML = "";
+    if(manualOverrides.length===0){
+      manualTable.innerHTML = `<tr><td colspan="6" style="color:var(--muted);font-weight:800;">Sin overrides aún.</td></tr>`;
+      return;
+    }
+    for(const o of manualOverrides){
+      const cfg = catConfig[o.category] || DEFAULT_MANUAL_CFG;
+      const typeLabel = o.type==="module" ? "Módulo" : "Rango";
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><span class="tag"><span class="sw" style="background:${cfg.color}"></span>${categoryLabel(o.category)}</span></td>
+        <td style="font-weight:900;color:var(--muted)">${typeLabel}</td>
+        <td style="font-family:ui-monospace,Menlo,Consolas; font-weight:800;">${o.from}</td>
+        <td style="font-family:ui-monospace,Menlo,Consolas; font-weight:800;">${o.to}</td>
+        <td style="font-weight:900;">${o.locs.length}</td>
+        <td><button class="btn danger sm" data-del="${o.id}">Eliminar</button></td>
+      `;
+      manualTable.appendChild(tr);
+    }
+    manualTable.querySelectorAll("button[data-del]").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        const id = btn.getAttribute("data-del");
+        manualOverrides = manualOverrides.filter(x=>x.id!==id);
+        saveManual();
+        applyDerived();
+        updateKPIs();
+        renderManualTable();
+        renderLayout();
+        renderCapacity();
+      });
+    });
+  }
+
+  function renderLayout(){
+    minimapBar.innerHTML = "";
+    for(const mod of orderedModulesDesc){
+      const mini = document.createElement("div");
+      mini.className = "mini";
+      mini.title = `Módulo ${mod}`;
+      mini.style.background = moduleColor(mod);
+      mini.addEventListener("click", ()=>setFocusModule(mod));
+      minimapBar.appendChild(mini);
+    }
+
+    rack1List.innerHTML = "";
+    rack2List.innerHTML = "";
+
+    const rack1Mods = orderedModulesDesc.filter(m=>moduleParity(m)==="odd");
+    const rack2Mods = orderedModulesDesc.filter(m=>moduleParity(m)==="even");
+
+    rack1Count.textContent = `${rack1Mods.length} módulos`;
+    rack2Count.textContent = `${rack2Mods.length} módulos`;
+
+    for(const mod of rack1Mods) rack1List.appendChild(renderModuleCard(mod));
+    for(const mod of rack2Mods) rack2List.appendChild(renderModuleCard(mod));
+
+    setFocusModule(focusModule, true);
+  }
+
+  function renderModuleCard(mod){
+    const card = document.createElement("div");
+    card.className = "module";
+    card.setAttribute("data-module", mod);
+
+    const slotsDiv = document.createElement("div");
+    slotsDiv.className = "slots";
+
+    for(const loc of moduleToLocs(mod)){
+      const d = derived.get(loc) || { state:"empty", qty:0, manualCategory:"" };
+      const s = document.createElement("div");
+      s.className = "slot " + stateToClass(d.state, d.manualCategory);
+      s.dataset.tip = buildTip(loc, d);
+      slotsDiv.appendChild(s);
+    }
+
+    card.innerHTML = `<div class="mnum">${mod}</div>`;
+    card.appendChild(slotsDiv);
+
+    card.addEventListener("click", ()=>setFocusModule(mod));
+    return card;
+  }
+
+  function setFocusModule(mod, silent=false){
+    focusModule = mod;
+    focusModuleEl.textContent = mod;
+
+    document.querySelectorAll(".module").forEach(el=>{
+      if(el.getAttribute("data-module")===mod){
+        el.style.outline = "3px solid rgba(59,130,246,.28)";
+        el.style.outlineOffset = "2px";
+      }else{
+        el.style.outline = "none";
       }
     });
 
-    document.getElementById('btnTestRead').addEventListener('click', async () => {
+    renderDetail(mod);
+
+    if(!silent){
+      const el = document.querySelector(`.module[data-module="${mod}"]`);
+      if(el) el.scrollIntoView({behavior:"auto", block:"center"});
+    }
+  }
+
+  function renderDetail(mod){
+    const locs = moduleToLocs(mod);
+    detailTableBody.innerHTML = "";
+
+    for(const loc of locs){
+      const d = derived.get(loc) || { state:"empty", qty:0, manualCategory:"" };
+      const st = prettyState(d.state, d.manualCategory);
+      const manual = d.manualCategory ? (catConfig[d.manualCategory]?.label || d.manualCategory) : "—";
+
+      const tr = document.createElement("tr");
+      tr.style.cursor = "pointer";
+
+      const hasItems = stockItemsMap.has(loc);
+      tr.innerHTML = `
+        <td style="font-family:ui-monospace,Menlo,Consolas; font-weight:900;">${loc}</td>
+        <td style="font-weight:900;">${st}</td>
+        <td style="font-weight:900;">${Number(d.qty||0)}</td>
+        <td style="font-weight:900; color:var(--muted);">${manual}</td>
+      `;
+
+      const trDetail = document.createElement("tr");
+      trDetail.style.display = "none";
+
+      let detailHtml = "";
+      if(hasItems){
+        const byVar = stockItemsMap.get(loc);
+        const items = Array.from(byVar.entries()).sort((a,b)=>b[1]-a[1]);
+        detailHtml = `
+          <div class="detailBox">
+            <div class="detailTitle">Detalle de ubicación</div>
+            <table class="table miniTable" style="margin-top:8px;">
+              <thead><tr><th>Código</th><th style="text-align:right;">QTY</th></tr></thead>
+              <tbody>
+                ${items.map(([code,qty])=>`<tr><td style="font-family:ui-monospace,Menlo,Consolas;font-weight:900;">${escapeHtml(code)}</td><td style="text-align:right;font-weight:900;">${fmtInt(qty)}</td></tr>`).join("")}
+              </tbody>
+            </table>
+          </div>
+        `;
+      }else{
+        detailHtml = `<div class="detailBox"><div class="detailTitle">Detalle de ubicación</div><div class="muted" style="margin-top:6px;">Sin códigos en el stock pegado para esta ubicación.</div></div>`;
+      }
+
+      trDetail.innerHTML = `<td colspan="4">${detailHtml}</td>`;
+
+      tr.addEventListener("click", ()=>{
+        const open = trDetail.style.display !== "none";
+        trDetail.style.display = open ? "none" : "table-row";
+      });
+
+      detailTableBody.appendChild(tr);
+      detailTableBody.appendChild(trDetail);
+    }
+  }
+
+  function highlightLoc(loc){
+    const norm = String(loc||"").trim();
+    if(!norm) return;
+
+    const mod = getModuleFromLoc(norm);
+    setFocusModule(mod);
+
+    setTimeout(()=>{
+      const row = Array.from(detailTableBody.querySelectorAll("tr"))
+        .find(tr => tr.firstElementChild && tr.firstElementChild.textContent.trim()===norm);
+      if(row){
+        row.style.background = "rgba(16,185,129,.12)";
+        setTimeout(()=>{ row.style.background = ""; }, 900);
+      }
+    }, 80);
+  }
+
+  function moduleColor(mod){
+    const locs = moduleToLocs(mod);
+    let hasBlock=false, hasReserve=false, hasManual=false, hasStock=false, hasLow=false, hasTransit=false;
+    let empties=0;
+    for(const loc of locs){
+      const d = derived.get(loc);
+      const st = d?.state || "empty";
+      if(st==="block") hasBlock=true;
+      else if(st==="reserve") hasReserve=true;
+      else if(st==="manual") hasManual=true;
+      else if(st==="low") hasLow=true;
+      else if(st==="stock") hasStock=true;
+      else if(st==="transit") hasTransit=true;
+      else empties++;
+    }
+
+    if(hasBlock && empties===7) return "var(--red)";
+    if(hasBlock) return "rgba(239,68,68,.75)";
+    if(hasReserve) return "rgba(20,184,166,.70)";
+    if(hasManual) return "rgba(59,130,246,.65)";
+    if(hasStock) return "rgba(34,197,94,.70)";
+    if(hasTransit) return "rgba(168,85,247,.70)";
+    if(hasLow) return "rgba(251,146,60,.75)";
+    return "rgba(203,213,225,.95)";
+  }
+
+  function stateToClass(state){
+    if(state==="stock") return "full";
+    if(state==="pack") return "pack";
+    if(state==="low") return "low";
+    if(state==="manual") return "manual";
+    if(state==="block") return "block";
+    if(state==="reserve") return "reserve";
+    if(state==="transit") return "transit";
+    return "";
+  }
+
+  function buildTip(loc, d){
+    const st = prettyState(d.state, d.manualCategory);
+    const qty = Number(d.qty||0);
+    const manual = d.manualCategory ? (catConfig[d.manualCategory]?.label || d.manualCategory) : "";
+    return manual
+      ? `${loc} | ${st} | QTY:${qty} | ${manual}`
+      : `${loc} | ${st} | QTY:${qty}`;
+  }
+
+  function prettyState(state){
+    if(state==="stock") return "🟩 Stock lleno";
+    if(state==="pack") return "🟨 M. Empaque";
+    if(state==="low") return "🟧 Bajo stock";
+    if(state==="manual") return "🟦 Manual";
+    if(state==="block") return "⛔ Bloqueado";
+    if(state==="reserve") return "🟦 Reservado";
+    if(state==="transit") return "🟪 Transitorio";
+    return "⬜ Vacío";
+  }
+
+  function saveManual(){ localStorage.setItem(LS_KEY_MANUAL, JSON.stringify(manualOverrides)); }
+  function loadManual(){
+    try{
+      const raw = localStorage.getItem(LS_KEY_MANUAL);
+      if(!raw) return [];
+      const arr = JSON.parse(raw);
+      if(!Array.isArray(arr)) return [];
+      return arr.map(o=>({ ...o, locs: Array.isArray(o.locs) ? o.locs : [] }));
+    }catch{
+      return [];
+    }
+  }
+
+  function saveIOM(){ localStorage.setItem(LS_KEY_IO_MANUAL, JSON.stringify(ioManual)); }
+  function loadIOM(){
+    try{
+      const raw = localStorage.getItem(LS_KEY_IO_MANUAL);
+      if(!raw) return {};
+      const obj = JSON.parse(raw);
+      return (obj && typeof obj==="object") ? obj : {};
+    }catch{
+      return {};
+    }
+  }
+
+  function saveIOSnaps(){ localStorage.setItem(LS_KEY_IO_SNAP, JSON.stringify(ioSnaps)); }
+  function loadIOSnaps(){
+    try{
+      const raw = localStorage.getItem(LS_KEY_IO_SNAP);
+      if(!raw) return {};
+      const obj = JSON.parse(raw);
+      return (obj && typeof obj==="object") ? obj : {};
+    }catch{
+      return {};
+    }
+  }
+
+  function computeCapacityOverview(){
+    const totalCatalog = catalog.length;
+
+    let blockedCount=0;
+    let productCount=0; // stock normal (no empaque)
+    let packCount=0;    // Material de Empaque
+    const manualCounts = new Map();
+    const usedByRack = {1:0, 2:0};
+    const blockedByRack = {1:0, 2:0};
+
+    for(const loc of catalog){
+      const d = derived.get(loc) || {state:"empty", qty:0, manualCategory:""};
+      const r = rackOfLoc(loc);
+
+      if(d.state === "block"){
+        blockedCount++;
+        blockedByRack[r]++;
+        continue;
+      }
+
+      if(d.state === "pack"){
+        packCount++;
+        usedByRack[r]++;
+      }else if(d.state === "stock" || d.state === "low" || d.state === "transit"){
+        productCount++;
+        usedByRack[r]++;
+      }else if(d.state === "manual" || d.state === "reserve"){
+        const cat = d.manualCategory || "MANUAL";
+        manualCounts.set(cat, (manualCounts.get(cat)||0)+1);
+        usedByRack[r]++;
+      }
+    }
+
+    const available = totalCatalog - blockedCount;
+    const usedTotal = productCount + packCount + Array.from(manualCounts.values()).reduce((a,b)=>a+b,0);
+    const capPct = available>0 ? (usedTotal/available)*100 : 0;
+
+    const rackTotals = {1:0,2:0};
+    for(const loc of catalog){
+      rackTotals[rackOfLoc(loc)]++;
+    }
+    const availByRack = {
+      1: rackTotals[1] - usedByRack[1] - blockedByRack[1],
+      2: rackTotals[2] - usedByRack[2] - blockedByRack[2],
+    };
+
+    return { totalCatalog, blockedCount, available, productCount, packCount, manualCounts, usedTotal, capPct, rackTotals, usedByRack, blockedByRack, availByRack };
+  }
+
+  function rackOfLoc(loc){
+    const m = parseInt(String(loc).split("-")[2]||"0",10);
+    return (m%2===1) ? 1 : 2;
+  }
+
+  function isBulkCWLoc(loc){
+    return /^bulk_cw[1-6]$/i.test(String(loc||"").trim());
+  }
+
+  function computeUnitsOverview(){
+    let unitsProductos = 0;
+    let unitsBulkCW = 0;
+
+    for(const r of stockRowsParsed){
+      const loc = String(r.loc||"").trim();
+      const zona = normalizeHeader(r.zona||"");
+      const q = Number(r.qty)||0;
+
+      if(isValidLoc(loc) && (zona==="" || zona==="bulk")){
+        unitsProductos += q;
+        continue;
+      }
+      if(isBulkCWLoc(loc) || (zona.startsWith("bulk cw") || zona.startsWith("bulk_cw"))){
+        unitsBulkCW += q;
+      }
+    }
+    const total = unitsProductos + unitsBulkCW;
+    return { unitsProductos, unitsBulkCW, total };
+  }
+
+  function resolveColor(token){
+    const v = String(token||"").trim();
+    if(v.startsWith("var(")){
+      const key = v.slice(4,-1).trim();
+      const c = getComputedStyle(document.documentElement).getPropertyValue(key).trim();
+      return c || "#0ea5a4";
+    }
+    return v || "#0ea5a4";
+  }
+
+  function drawPie(canvas, data){
+    const ctx = canvas.getContext("2d");
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0,0,w,h);
+
+    const total = data.reduce((a,d)=>a + d.value, 0) || 1;
+    const cx = Math.floor(w*0.42), cy = Math.floor(h*0.52);
+    const r = Math.min(w,h)*0.38;
+
+    let ang = -Math.PI/2;
+    for(const d of data){
+      const slice = (d.value/total) * Math.PI*2;
+      ctx.beginPath();
+      ctx.moveTo(cx,cy);
+      ctx.arc(cx,cy,r,ang,ang+slice);
+      ctx.closePath();
+      ctx.fillStyle = resolveColor(d.color);
+      ctx.fill();
+      ang += slice;
+    }
+
+    ctx.beginPath();
+    ctx.arc(cx,cy,r*0.55,0,Math.PI*2);
+    ctx.fillStyle = "#ffffff";
+    ctx.fill();
+
+    ctx.fillStyle = "#0f172a";
+    ctx.font = "800 18px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const first = data[0]?.value || 0;
+    ctx.fillText((Math.round((first)/total*100)) + "%", cx, cy-10);
+    ctx.font = "600 11px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+    ctx.fillStyle = "#64748b";
+    ctx.fillText("Productos", cx, cy+12);
+  }
+
+  function renderCapacity(){
+    const tblUnits = document.getElementById("tblUnits");
+    const uTotal = document.getElementById("uTotal");
+    const uNote  = document.getElementById("uNote");
+
+    const tblPallets = document.getElementById("tblPallets");
+    const pUsed = document.getElementById("pUsed");
+    const capPctEl = document.getElementById("capPct");
+
+    const kTotalCap = document.getElementById("kTotalCap");
+    const kTotalCapSub = document.getElementById("kTotalCapSub");
+    const kBlocked = document.getElementById("kBlocked");
+    const kAvail = document.getElementById("kAvail");
+
+    const tblRacks = document.getElementById("tblRacks");
+    const pie = document.getElementById("piePallets");
+    const pieLegend = document.getElementById("pieLegend");
+
+    if(!tblUnits || !tblPallets) return;
+
+    const u = computeUnitsOverview();
+    tblUnits.innerHTML = `
+      <tr><td><strong>Productos</strong></td><td style="text-align:right;"><strong>${fmtInt(u.unitsProductos)}</strong></td></tr>
+      <tr><td>Bulk (CW)</td><td style="text-align:right;">${fmtInt(u.unitsBulkCW)}</td></tr>
+    `;
+    if(uTotal) uTotal.textContent = fmtInt(u.total);
+    if(uNote) uNote.textContent = "Bulk (CW): unidades pendientes de perchar por etiquetado.";
+
+    const c = computeCapacityOverview();
+    if(kTotalCap) kTotalCap.textContent = String(c.totalCatalog);
+    if(kTotalCapSub) kTotalCapSub.textContent = "90 módulos × 7 posiciones";
+    if(kBlocked) kBlocked.textContent = String(c.blockedCount);
+    if(kAvail) kAvail.textContent = String(c.available);
+    if(capPctEl) capPctEl.textContent = `${c.capPct.toFixed(2)}%`;
+
+    const rows = [];
+    rows.push({ key:"PRODUCTOS", label:"Productos", value:c.productCount, color:"var(--teal)" });
+    rows.push({ key:"PACK", label:"M. Empaque", value:c.packCount, color:"var(--amber)" });
+
+    const sortedCats = Array.from(c.manualCounts.entries()).sort((a,b)=>b[1]-a[1]);
+    for(const [cat, val] of sortedCats){
+      if(cat==="BLOQUEADAS") continue;
+      const cfg = catConfig[cat] || DEFAULT_MANUAL_CFG;
+      rows.push({ key:cat, label: categoryLabel(cat), value: val, color: cfg.color || "var(--blue)" });
+    }
+
+    tblPallets.innerHTML = rows.map(r=>`<tr><td>${r.label}</td><td style="text-align:right;"><strong>${r.value}</strong></td></tr>`).join("");
+    if(pUsed) pUsed.textContent = String(c.usedTotal);
+
+    if(tblRacks){
+      tblRacks.innerHTML = `
+        <tr>
+          <td><strong>Rack 1</strong></td>
+          <td style="text-align:right;">${c.rackTotals[1]}</td>
+          <td style="text-align:right;">${c.usedByRack[1]}</td>
+          <td style="text-align:right;"><strong>${c.availByRack[1]}</strong></td>
+        </tr>
+        <tr>
+          <td><strong>Rack 2</strong></td>
+          <td style="text-align:right;">${c.rackTotals[2]}</td>
+          <td style="text-align:right;">${c.usedByRack[2]}</td>
+          <td style="text-align:right;"><strong>${c.availByRack[2]}</strong></td>
+        </tr>
+      `;
+    }
+
+    if(pieLegend){
+      pieLegend.innerHTML = rows.map(r=>{
+        return `<div style="display:flex; align-items:center; gap:8px;">
+          <span style="width:10px;height:10px;border-radius:3px;background:${resolveColor(r.color)};display:inline-block;"></span>
+          <div style="flex:1; color:var(--text);">${r.label}</div>
+          <div style="font-weight:900;">${r.value}</div>
+        </div>`;
+      }).join("");
+    }
+
+    if(pie) drawPie(pie, rows);
+  }
+
+  const btnToggleStock = document.getElementById("btnToggleStock");
+  const stockUploadBody = document.getElementById("stockUploadBody");
+  if(btnToggleStock && stockUploadBody){
+    btnToggleStock.addEventListener("click", ()=>{
+      const isHidden = stockUploadBody.classList.toggle("hidden");
+      btnToggleStock.textContent = isHidden ? "▸" : "▾";
+    });
+  }
+</script>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getFirestore, doc, setDoc, getDoc, getDocs, collection, query, where, orderBy, serverTimestamp, writeBatch, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBBrLGNfBdKiFdrn4VBpuzB2ZkOf_EbjpI",
+    authDomain: "capacity-tools-b09d6.firebaseapp.com",
+    projectId: "capacity-tools-b09d6",
+    storageBucket: "capacity-tools-b09d6.firebasestorage.app",
+    messagingSenderId: "241517150762",
+    appId: "1:241517150762:web:372131dc4ddb9ced14b953"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db  = getFirestore(app);
+
+  // === AUTH (solo para escrituras) ===
+  const auth = getAuth(app);
+  const authProvider = new GoogleAuthProvider();
+
+  async function ensureAuth(){
+    // Solo pedimos login cuando necesitas escribir.
+    if(auth.currentUser) return auth.currentUser;
+
+    // Si vienes de un redirect previo, intenta recuperar sesión primero
+    try{
+      const rr = await getRedirectResult(auth);
+      if(rr && rr.user) return rr.user;
+    }catch(e){
+      // ignore
+    }
+
+    try{
+      const res = await signInWithPopup(auth, authProvider);
+      return res.user;
+    }catch(e){
+      const code = (e && e.code) ? e.code : "";
+      console.warn("Auth error:", code, e);
+
+      if(code === "auth/unauthorized-domain"){
+        alert("⚠️ Firebase Auth bloqueó el dominio.
+
+Ve a Firebase Console → Authentication → Configuración → Dominios autorizados y agrega:
+
+- kevinsuarezoriflame.github.io
+
+Luego recarga e intenta de nuevo.");
+        throw e;
+      }
+
+      // Popups bloqueados o cerrados → usamos redirect como fallback
+      if(code === "auth/popup-blocked" || code === "auth/popup-closed-by-user"){
+        alert("🔐 Para guardar en la nube necesito iniciar sesión con Google.
+
+Se abrirá una pantalla de inicio de sesión (redirect). Al volver, presiona Guardar nuevamente.");
+        await signInWithRedirect(auth, authProvider);
+        throw e;
+      }
+
+      alert("❌ No se pudo iniciar sesión para guardar en la nube.
+
+Detalle: " + (code || "error") + "
+Revisa conexión / reglas.");
+      throw e;
+    }
+  }
+
+  // Debug/visibilidad en consola (no altera UI)
+  onAuthStateChanged(auth, (u)=>{
+    if(u) console.log("✅ Auth:", u.email);
+  });
+
+
+  const COL = "ocupacion_diaria"; // docs: YYYY-MM-DD
+
+  function todayStr(){
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,"0");
+    const day = String(d.getDate()).padStart(2,"0");
+    return `${y}-${m}-${day}`;
+  }
+
+  async function saveToday(pct, palletsUsed){
+    await ensureAuth();
+    const date = todayStr();
+    await setDoc(doc(db, COL, date), {
+      date,
+      pct: Number(pct),
+      palletsUsed: (palletsUsed==null ? null : Number(palletsUsed)),
+      updatedAt: serverTimestamp()
+    }, { merge:true });
+    return date;
+  }
+
+  async function loadSeries(){
+    const qy = query(collection(db, COL), orderBy("date","asc"));
+    const snap = await getDocs(qy);
+    return snap.docs.map(d=>d.data()).filter(x=>typeof x.pct==="number" && x.date);
+  }
+
+  window.occCloud = { saveToday, loadSeries, todayStr };
+
+
+  // === Ocupación diaria (Firebase / Firestore) ===
+  const btnSaveOccToday = document.getElementById("btnSaveOccToday");
+  const btnViewOccHistory = document.getElementById("btnViewOccHistory");
+  const modalOcc = document.getElementById("modalOcc");
+  const btnCloseModalOcc = document.getElementById("btnCloseModalOcc");
+  const btnExportOccPng = document.getElementById("btnExportOccPng");
+  const occLine = document.getElementById("occLine");
+  const occRangeLbl = document.getElementById("occRangeLbl");
+  const occLastDate = document.getElementById("occLastDate");
+  const occLastPct = document.getElementById("occLastPct");
+  const occLastPallets = document.getElementById("occLastPallets");
+  const occDays = document.getElementById("occDays");
+
+  function openOccModal(){ if(modalOcc) modalOcc.classList.add("open"); }
+  function closeOccModal(){ if(modalOcc) modalOcc.classList.remove("open"); }
+
+  if(btnCloseModalOcc) btnCloseModalOcc.addEventListener("click", closeOccModal);
+  if(modalOcc) modalOcc.addEventListener("click", (e)=>{ if(e.target===modalOcc) closeOccModal(); });
+
+  function getCurrentOccPct(){
+    const el = document.getElementById("capPct");
+    if(!el) return null;
+    const t = (el.textContent||"").replace("%","").trim().replace(",",".");
+    const v = Number(t);
+    return Number.isFinite(v) ? v : null;
+  }
+
+  function getCurrentPalletsUsed(){
+    const el = document.getElementById("pUsed");
+    if(!el) return null;
+    // acepta formatos tipo 267, 1.234, 1,234
+    let t = (el.textContent||"").trim();
+    t = t.replace(/[^0-9.,-]/g, "");
+    // si tiene ambos separadores, asume punto como miles y coma como decimal
+    if(t.includes(".") && t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
+    else t = t.replace(/\./g, "");
+    const v = Number(t);
+    return Number.isFinite(v) ? v : null;
+  }
+
+  async function renderOccHistory(){
+    if(!window.occCloud || !occLine) return;
+    const data = await window.occCloud.loadSeries();
+    const series = data.map(d=>{
+      const dt = String(d.date||"");
+      const mm = dt.slice(5,7);
+      const dd = dt.slice(8,10);
+      const months = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+      const lbl = (dd && mm) ? `${dd}-${months[(Number(mm)||1)-1]}` : dt;
+      return { label: lbl, value: Number(d.pct) };
+    });
+
+    if(occDays) occDays.textContent = String(series.length);
+    if(series.length){
+      const last = data[data.length-1];
+      if(occLastDate) occLastDate.textContent = last.date || "—";
+      if(occLastPct) occLastPct.textContent = (Number(last.pct)).toFixed(2) + "%";
+      if(occLastPallets){
+        const pv = (last.palletsUsed==null ? "—" : String(Math.round(Number(last.palletsUsed))));
+        occLastPallets.textContent = pv;
+      }
+      if(occRangeLbl){
+        const first = data[0].date;
+        const lastD = last.date;
+        occRangeLbl.textContent = first && lastD ? `${first} → ${lastD}` : "—";
+      }
+    }else{
+      if(occLastDate) occLastDate.textContent = "—";
+      if(occLastPct) occLastPct.textContent = "—";
+      if(occLastPallets) occLastPallets.textContent = "—";
+      if(occRangeLbl) occRangeLbl.textContent = "—";
+    }
+
+    drawLineChartPct(occLine, series);
+  }
+
+  if(btnSaveOccToday){
+    btnSaveOccToday.addEventListener("click", async ()=>{
+      const pct = getCurrentOccPct();
+      if(pct===null){
+        alert("No se pudo leer el % de ocupación actual.");
+        return;
+      }
+      const palletsUsed = getCurrentPalletsUsed();
+      if(palletsUsed===null){
+        alert("No se pudo leer el total de pallets usados.");
+        return;
+      }
+      if(!window.occCloud){
+        alert("Firebase no está listo aún. Revisa conexión / carga del script.");
+        return;
+      }
       try{
-        log("📥 READ iniciado...");
-        const data = await testRead();
-        log("✅ READ OK. Resultado:", data);
-        kErr.textContent = "—";
-        kErr.style.color = "";
-        alert("READ OK ✅ (revisa el LOG)");
+        const d = await window.occCloud.saveToday(pct, palletsUsed);
+        alert(`✅ Ocupación guardada para ${d}: ${pct.toFixed(2)}% • Pallets usados: ${Math.round(palletsUsed)}`);
       }catch(err){
-        log("❌ READ falló:", err);
-        kErr.textContent = err?.message || "READ falló";
-        kErr.style.color = "var(--red)";
-        alert("No se pudo leer. Revisa el LOG/Console (F12).");
+        console.error(err);
+        alert("❌ No se pudo guardar en Firebase. Revisa Firestore Rules / conexión.");
       }
     });
+  }
 
-    log("✅ App cargada. Si algo se rompe, aquí lo verás.");
-  </script>
+  if(btnViewOccHistory){
+    btnViewOccHistory.addEventListener("click", async ()=>{
+      openOccModal();
+      try{ await renderOccHistory(); }
+      catch(err){ console.error(err); alert("❌ No se pudo cargar el histórico desde Firebase."); }
+    });
+  }
+
+  if(btnExportOccPng && occLine){
+    btnExportOccPng.addEventListener("click", ()=>{
+      try{
+        const a = document.createElement("a");
+        a.download = "ocupacion_diaria.png";
+        a.href = occLine.toDataURL("image/png");
+        a.click();
+      }catch(e){
+        alert("No se pudo exportar el gráfico.");
+      }
+    });
+  }
+
+
+  // === Colaborativo FULL (Firestore) ===
+  // Guarda/lee el ESTADO compartido (stock pegado, movimientos pegados y overrides manuales) por mes: ds=YYYY-MM
+  const DS_COL = "datasets";
+  const DS_STATE_DOC = "state/current";
+  const DS_MANIFEST_DOC = "state/manifest";
+  const DS_BLOBS = "blobs";
+  const MAX_CHUNK = 180000; // chars por doc (seguro bajo el límite)
+
+  function pad2(n){ return String(n).padStart(2,"0"); }
+  function monthId(d=new Date()){ return `${d.getFullYear()}-${pad2(d.getMonth()+1)}`; }
+
+  function getClientId(){
+    const k="capacityTools_clientId_v1";
+    let v = localStorage.getItem(k);
+    if(!v){
+      v = "ct_" + Math.random().toString(16).slice(2) + "_" + Date.now().toString(16);
+      localStorage.setItem(k, v);
+    }
+    return v;
+  }
+
+  function getDatasetId(){
+    const sp = new URLSearchParams(location.search);
+    const ds = sp.get("ds");
+    if(ds && /^\d{4}-\d{2}$/.test(ds)) return ds;
+    return monthId(); // default: mes actual del equipo
+  }
+
+  function splitChunks(text){
+    const t = String(text||"");
+    const out = [];
+    for(let i=0;i<t.length;i+=MAX_CHUNK){
+      out.push(t.slice(i, i+MAX_CHUNK));
+    }
+    return out.length ? out : [""];
+  }
+
+  async function saveTextAsChunks(dsId, type, text){
+    await ensureAuth();
+    const chunks = splitChunks(text);
+    const blobsRef = collection(db, DS_COL, dsId, DS_BLOBS);
+
+    // Lee existentes para borrar sobrantes si la nueva versión trae menos chunks
+    const qOld = query(blobsRef, where("type","==", type), orderBy("i","asc"));
+    const oldSnap = await getDocs(qOld);
+    const oldCount = oldSnap.size;
+
+    const batch = writeBatch(db);
+
+    for(let i=0;i<chunks.length;i++){
+      const id = `${type}_${String(i).padStart(3,"0")}`;
+      batch.set(doc(db, DS_COL, dsId, DS_BLOBS, id), {
+        type, i, data: chunks[i],
+        updatedAt: serverTimestamp()
+      }, { merge:true });
+    }
+
+    // borra chunks sobrantes
+    for(let i=chunks.length;i<oldCount;i++){
+      const id = `${type}_${String(i).padStart(3,"0")}`;
+      batch.delete(doc(db, DS_COL, dsId, DS_BLOBS, id));
+    }
+
+    // actualiza manifest
+    batch.set(doc(db, DS_COL, dsId, ...DS_MANIFEST_DOC.split("/")), {
+      dsId,
+      [`${type}Chunks`]: chunks.length,
+      updatedAt: serverTimestamp(),
+      updatedBy: getClientId()
+    }, { merge:true });
+
+    await batch.commit();
+  }
+
+  async function loadTextFromChunks(dsId, type){
+    const manRef = doc(db, DS_COL, dsId, ...DS_MANIFEST_DOC.split("/"));
+    const manSnap = await getDoc(manRef);
+    const man = manSnap.exists() ? manSnap.data() : {};
+    const n = Number(man[`${type}Chunks`] || 0);
+
+    if(!n){
+      // fallback: intenta traer todos los chunks por query
+      const qy = query(collection(db, DS_COL, dsId, DS_BLOBS), where("type","==", type), orderBy("i","asc"));
+      const snap = await getDocs(qy);
+      return snap.docs.map(d=>d.data()?.data||"").join("");
+    }
+
+    const parts = [];
+    for(let i=0;i<n;i++){
+      const id = `${type}_${String(i).padStart(3,"0")}`;
+      const s = await getDoc(doc(db, DS_COL, dsId, DS_BLOBS, id));
+      if(s.exists()) parts.push(String(s.data()?.data||""));
+    }
+    return parts.join("");
+  }
+
+  async function saveManualOverrides(dsId, overrides){
+    await ensureAuth();
+    await setDoc(doc(db, DS_COL, dsId, ...DS_STATE_DOC.split("/")), {
+      dsId,
+      manualOverrides: Array.isArray(overrides) ? overrides : [],
+      updatedAt: serverTimestamp(),
+      updatedBy: getClientId()
+    }, { merge:true });
+  }
+
+  async function loadManualOverrides(dsId){
+    const snap = await getDoc(doc(db, DS_COL, dsId, ...DS_STATE_DOC.split("/")));
+    if(!snap.exists()) return [];
+    const d = snap.data() || {};
+    return Array.isArray(d.manualOverrides) ? d.manualOverrides : [];
+  }
+
+  async function cloudSaveAll(){
+    await ensureAuth();
+    const dsId = getDatasetId();
+    const txtStock = document.getElementById("txtStock");
+    const txtMoves = document.getElementById("txtMoves");
+    const overrides = (window.__CT_getManualOverrides ? window.__CT_getManualOverrides() : []);
+
+    const stock = txtStock ? txtStock.value : "";
+    const moves = txtMoves ? txtMoves.value : "";
+
+    // Guardar
+    await saveTextAsChunks(dsId, "stock", stock);
+    await saveTextAsChunks(dsId, "moves", moves);
+    await saveManualOverrides(dsId, overrides);
+
+    // UI feedback
+    const cs = document.getElementById("cloudStatus");
+    if(cs) cs.textContent = `Nube: ${dsId} • guardado ✅`;
+    return dsId;
+  }
+
+  async function cloudLoadAll(){
+    const dsId = getDatasetId();
+
+    const stock = await loadTextFromChunks(dsId, "stock");
+    const moves = await loadTextFromChunks(dsId, "moves");
+    const overrides = await loadManualOverrides(dsId);
+
+    const txtStock = document.getElementById("txtStock");
+    const txtMoves = document.getElementById("txtMoves");
+    if(txtStock) txtStock.value = stock || "";
+    if(txtMoves) txtMoves.value = moves || "";
+
+    if(window.__CT_setManualOverrides) window.__CT_setManualOverrides(overrides);
+
+    // Procesar automáticamente para que todos vean resultados iguales
+    const btnProcess = document.getElementById("btnProcess");
+    if(btnProcess) btnProcess.click();
+
+    const cs = document.getElementById("cloudStatus");
+    if(cs) cs.textContent = `Nube: ${dsId} • cargado ✅`;
+    return dsId;
+  }
+
+  function setupCloudUI(){
+    const btnSave = document.getElementById("btnCloudSave");
+    const btnLoad = document.getElementById("btnCloudLoad");
+    const cs = document.getElementById("cloudStatus");
+    const dsId = getDatasetId();
+    if(cs) cs.textContent = `Nube: ${dsId}`;
+
+    if(btnSave){
+      btnSave.addEventListener("click", async ()=>{
+        btnSave.disabled = true;
+        try{ await cloudSaveAll(); }
+        catch(e){
+          console.error(e);
+          alert("❌ No se pudo guardar en la nube. Revisa Firestore Rules / conexión.");
+        } finally { btnSave.disabled = false; }
+      });
+    }
+
+    if(btnLoad){
+      btnLoad.addEventListener("click", async ()=>{
+        btnLoad.disabled = true;
+        try{ await cloudLoadAll(); }
+        catch(e){
+          console.error(e);
+          alert("❌ No se pudo cargar desde la nube. Revisa si existe data para ese mes.");
+        } finally { btnLoad.disabled = false; }
+      });
+    }
+
+    // Aviso de cambios (sin pisarte lo que estés pegando)
+    const manRef = doc(db, DS_COL, dsId, ...DS_MANIFEST_DOC.split("/"));
+    onSnapshot(manRef, (snap)=>{
+      if(!snap.exists()) return;
+      const d = snap.data() || {};
+      const who = d.updatedBy ? ` • ${String(d.updatedBy).slice(0,8)}` : "";
+      if(cs) cs.textContent = `Nube: ${dsId} • actualizado${who}`;
+    });
+  }
+
+  // Inicializar UI colaborativa
+  try{ setupCloudUI(); }catch(e){ console.warn("Cloud UI init:", e); }
+
+  // Exponer helpers por si los necesitas luego
+  window.cloudDS = { getDatasetId, cloudSaveAll, cloudLoadAll };
+
+</script>
 </body>
 </html>
