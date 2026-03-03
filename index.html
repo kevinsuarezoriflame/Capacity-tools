@@ -939,7 +939,7 @@
               <div class="capBadge"><span class="sw" style="background:var(--teal)"></span><span id="capPct">0%</span> ocupación</div>
               <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                 <button class="btn sm" id="btnSaveOccToday" type="button">Guardar ocupación (hoy)</button>
-                <button class="btn ghost sm" id="btnViewOccHistory" type="button">Ver evolución</button>
+                <button class="btn ghost sm" id="btnViewOccHistory" type="button">📈 Ocupación</button>
               </div>
             </div>
 
@@ -1074,7 +1074,7 @@
   <div class="modal" id="modalOcc">
     <div class="modal-card">
       <div class="modal-head">
-        <div class="modal-title">📈 Evolución de ocupación • <span id="occRangeLbl" style="font-weight:900;color:#0f4a42;"></span></div>
+        <div class="modal-title">📈 Ocupación • <span id="occRangeLbl" style="font-weight:900;color:#0f4a42;"></span></div>
         <div style="display:flex; gap:8px; align-items:center;">
           <button class="btn sm" id="btnExportOccPng" type="button">Descargar PNG</button>
           <button class="btn danger sm" id="btnCloseModalOcc" type="button">Cerrar</button>
@@ -3440,18 +3440,24 @@ function showInboundDetail(title, monthLabelText, rows){
   const auth = getAuth(app);
   const authProvider = new GoogleAuthProvider();
 
+  let _redirectChecked = false;
+  async function checkRedirectOnce(){
+    if(_redirectChecked) return;
+    _redirectChecked = true;
+    try{
+      await getRedirectResult(auth);
+    }catch(e){
+      // ignore
+    }
+  }
+  // Ejecuta al cargar (no afecta UI)
+  checkRedirectOnce();
+
   async function ensureAuth(){
     // Solo pedimos login cuando necesitas escribir.
     if(auth.currentUser) return auth.currentUser;
 
-    // Si vienes de un redirect previo, intenta recuperar sesión primero
-    try{
-      const rr = await getRedirectResult(auth);
-      if(rr && rr.user) return rr.user;
-    }catch(e){
-      // ignore
-    }
-
+    // Importante: NO hacer awaits antes del popup (evita bloqueos del navegador)
     try{
       const res = await signInWithPopup(auth, authProvider);
       return res.user;
@@ -3486,6 +3492,7 @@ Revisa conexión / reglas.");
       throw e;
     }
   }
+
 
   // Debug/visibilidad en consola (no altera UI)
   onAuthStateChanged(auth, (u)=>{
