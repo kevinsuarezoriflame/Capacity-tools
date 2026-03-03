@@ -3621,7 +3621,8 @@ Revisa conexión / reglas.");
         alert(`✅ Ocupación guardada para ${d}: ${pct.toFixed(2)}% • Pallets usados: ${Math.round(palletsUsed)}`);
       }catch(err){
         console.error(err);
-        alert("❌ No se pudo guardar en Firebase. Revisa Firestore Rules / conexión.");
+        const code = err && err.code ? err.code : "";
+        alert("❌ No se pudo guardar en la nube." + (code?`\nDetalle: ${code}`:"") + "\nRevisa Auth (login Google), Firestore Rules y conexión.");
       }
     });
   }
@@ -3672,8 +3673,12 @@ Revisa conexión / reglas.");
   function getDatasetId(){
     const sp = new URLSearchParams(location.search);
     const ds = sp.get("ds");
+    // Modo recomendado: dataset único compartido (ACTIVO)
+    if(ds && /^active$/i.test(ds)) return "ACTIVE";
+    // Si quieres consultar un histórico por mes, aún puedes usar ds=YYYY-MM
     if(ds && /^\d{4}-\d{2}$/.test(ds)) return ds;
-    return monthId(); // default: mes actual del equipo
+    return "ACTIVE";
+  }
   }
 
   function splitChunks(text){
@@ -3782,6 +3787,75 @@ Revisa conexión / reglas.");
     return dsId;
   }
 
+  async function cloudSaveAllTo(targetDsId){
+    await ensureAuth();
+    const txtStock = document.getElementById("txtStock");
+    const txtMoves = document.getElementById("txtMoves");
+    const overrides = (window.__CT_getManualOverrides ? window.__CT_getManualOverrides() : []);
+    const stock = txtStock ? txtStock.value : "";
+    const moves = txtMoves ? txtMoves.value : "";
+    await saveTextAsChunks(targetDsId, "stock", stock);
+    await saveTextAsChunks(targetDsId, "moves", moves);
+    await saveManualOverrides(targetDsId, overrides);
+    return targetDsId;
+  }
+
+  function inferMonthFromMovesText(){
+    const txtMoves = document.getElementById("txtMoves");
+    const t = (txtMoves && txtMoves.value) ? txtMoves.value : "";
+    // Busca fechas dd/mm/yyyy o dd/mm/yyyy hh:mm
+    const reDate = /\b(\d{2})\/(\d{2})\/(\d{4})\b/g;
+    let m, best=null;
+    while((m = reDate.exec(t))){
+      const dd = Number(m[1]), mm = Number(m[2]), yyyy = Number(m[3]);
+      if(mm>=1 && mm<=12 && dd>=1 && dd<=31){
+        const key = yyyy*100 + mm;
+        if(best==null || key>best) best = key;
+      }
+    }
+    if(best!=null){
+      const yyyy = Math.floor(best/100);
+      const mm = String(best%100).padStart(2,"0");
+      return `${yyyy}-${mm}`;
+    }
+    // fallback: mes actual
+    return monthId(new Date());
+  }
+
+  async function clearActiveDatasetCloudAndUI(){
+    await ensureAuth();
+    const activeId = "ACTIVE";
+    await saveTextAsChunks(activeId, "stock", "");
+    await saveTextAsChunks(activeId, "moves", "");
+    await saveManualOverrides(activeId, []);
+    const txtStock = document.getElementById("txtStock");
+    const txtMoves = document.getElementById("txtMoves");
+    if(txtStock) txtStock.value = "";
+    if(txtMoves) txtMoves.value = "";
+    if(window.__CT_setManualOverrides) window.__CT_setManualOverrides([]);
+    const btnProcess = document.getElementById("btnProcess");
+    if(btnProcess) btnProcess.click();
+    const cs = document.getElementById("cloudStatus");
+    if(cs) cs.textContent = `Nube: ACTIVE • vacío ✅`;
+  }
+
+  async function closeMonthSnapshot(){
+    // Guarda snapshot mensual (YYYY-MM) y deja ACTIVE en blanco para nueva data.
+    const targetMonth = inferMonthFromMovesText();
+    if(!confirm(`Vas a cerrar el mes ${targetMonth}.\n\nEsto hará:\n1) Guardar un snapshot mensual en la nube (ds=${targetMonth})\n2) Vaciar el dataset ACTIVE para empezar una nueva carga\n\n¿Continuar?`)) return;
+    try{
+      // 1) snapshot mensual
+      await cloudSaveAllTo(targetMonth);
+      // 2) limpiar ACTIVE
+      await clearActiveDatasetCloudAndUI();
+      alert(`✅ Mes ${targetMonth} cerrado.\nSnapshot guardado (ds=${targetMonth}).\nACTIVE quedó vacío para nueva data.`);
+    }catch(e){
+      console.error(e);
+      const code = e && e.code ? e.code : "";
+      alert("❌ No se pudo cerrar el mes en la nube. " + (code ? `(${code})` : "") + "\nRevisa Auth / Rules / conexión.");
+    }
+  }
+
   async function cloudLoadAll(){
     const dsId = getDatasetId();
 
@@ -3803,6 +3877,75 @@ Revisa conexión / reglas.");
     const cs = document.getElementById("cloudStatus");
     if(cs) cs.textContent = `Nube: ${dsId} • cargado ✅`;
     return dsId;
+  }
+
+  async function cloudSaveAllTo(targetDsId){
+    await ensureAuth();
+    const txtStock = document.getElementById("txtStock");
+    const txtMoves = document.getElementById("txtMoves");
+    const overrides = (window.__CT_getManualOverrides ? window.__CT_getManualOverrides() : []);
+    const stock = txtStock ? txtStock.value : "";
+    const moves = txtMoves ? txtMoves.value : "";
+    await saveTextAsChunks(targetDsId, "stock", stock);
+    await saveTextAsChunks(targetDsId, "moves", moves);
+    await saveManualOverrides(targetDsId, overrides);
+    return targetDsId;
+  }
+
+  function inferMonthFromMovesText(){
+    const txtMoves = document.getElementById("txtMoves");
+    const t = (txtMoves && txtMoves.value) ? txtMoves.value : "";
+    // Busca fechas dd/mm/yyyy o dd/mm/yyyy hh:mm
+    const reDate = /\b(\d{2})\/(\d{2})\/(\d{4})\b/g;
+    let m, best=null;
+    while((m = reDate.exec(t))){
+      const dd = Number(m[1]), mm = Number(m[2]), yyyy = Number(m[3]);
+      if(mm>=1 && mm<=12 && dd>=1 && dd<=31){
+        const key = yyyy*100 + mm;
+        if(best==null || key>best) best = key;
+      }
+    }
+    if(best!=null){
+      const yyyy = Math.floor(best/100);
+      const mm = String(best%100).padStart(2,"0");
+      return `${yyyy}-${mm}`;
+    }
+    // fallback: mes actual
+    return monthId(new Date());
+  }
+
+  async function clearActiveDatasetCloudAndUI(){
+    await ensureAuth();
+    const activeId = "ACTIVE";
+    await saveTextAsChunks(activeId, "stock", "");
+    await saveTextAsChunks(activeId, "moves", "");
+    await saveManualOverrides(activeId, []);
+    const txtStock = document.getElementById("txtStock");
+    const txtMoves = document.getElementById("txtMoves");
+    if(txtStock) txtStock.value = "";
+    if(txtMoves) txtMoves.value = "";
+    if(window.__CT_setManualOverrides) window.__CT_setManualOverrides([]);
+    const btnProcess = document.getElementById("btnProcess");
+    if(btnProcess) btnProcess.click();
+    const cs = document.getElementById("cloudStatus");
+    if(cs) cs.textContent = `Nube: ACTIVE • vacío ✅`;
+  }
+
+  async function closeMonthSnapshot(){
+    // Guarda snapshot mensual (YYYY-MM) y deja ACTIVE en blanco para nueva data.
+    const targetMonth = inferMonthFromMovesText();
+    if(!confirm(`Vas a cerrar el mes ${targetMonth}.\n\nEsto hará:\n1) Guardar un snapshot mensual en la nube (ds=${targetMonth})\n2) Vaciar el dataset ACTIVE para empezar una nueva carga\n\n¿Continuar?`)) return;
+    try{
+      // 1) snapshot mensual
+      await cloudSaveAllTo(targetMonth);
+      // 2) limpiar ACTIVE
+      await clearActiveDatasetCloudAndUI();
+      alert(`✅ Mes ${targetMonth} cerrado.\nSnapshot guardado (ds=${targetMonth}).\nACTIVE quedó vacío para nueva data.`);
+    }catch(e){
+      console.error(e);
+      const code = e && e.code ? e.code : "";
+      alert("❌ No se pudo cerrar el mes en la nube. " + (code ? `(${code})` : "") + "\nRevisa Auth / Rules / conexión.");
+    }
   }
 
   function setupCloudUI(){
@@ -3834,6 +3977,22 @@ Revisa conexión / reglas.");
       });
     }
 
+
+    // Auto-carga del dataset ACTIVO al abrir (ideal para usar en cualquier PC)
+    // Solo auto-carga si los paneles de pegado están vacíos (para no pisar lo que ya pegaste).
+    setTimeout(async ()=>{
+      try{
+        const txtStock = document.getElementById("txtStock");
+        const txtMoves = document.getElementById("txtMoves");
+        const hasLocal = (txtStock && txtStock.value.trim().length>0) || (txtMoves && txtMoves.value.trim().length>0);
+        if(!hasLocal){
+          await cloudLoadAll();
+        }
+      }catch(e){
+        console.warn("Auto-load nube falló:", e);
+      }
+    }, 250);
+
     // Aviso de cambios (sin pisarte lo que estés pegando)
     const manRef = doc(db, DS_COL, dsId, ...DS_MANIFEST_DOC.split("/"));
     onSnapshot(manRef, (snap)=>{
@@ -3852,4 +4011,13 @@ Revisa conexión / reglas.");
 
 </script>
 </body>
-</html>
+</html
+    const btnCloseMonth = document.getElementById("btnCloseMonth");
+    if(btnCloseMonth){
+      btnCloseMonth.addEventListener("click", async ()=>{
+        btnCloseMonth.disabled = true;
+        try{ await closeMonthSnapshot(); }
+        finally { btnCloseMonth.disabled = false; }
+      });
+    }
+>
