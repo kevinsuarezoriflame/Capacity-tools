@@ -4016,15 +4016,17 @@ Revisa conexión / reglas.");
   // Exponer helpers por si los necesitas luego
   window.cloudDS = { getDatasetId, cloudSaveAll, cloudLoadAll };
 
+
+  // Botón Cerrar mes (snapshot mensual)
+  const btnCloseMonth = document.getElementById("btnCloseMonth");
+  if (btnCloseMonth) {
+    btnCloseMonth.addEventListener("click", async () => {
+      btnCloseMonth.disabled = true;
+      try { await closeMonthSnapshot(); }
+      finally { btnCloseMonth.disabled = false; }
+    });
+  }
+
 </script>
 </body>
-</html
-    const btnCloseMonth = document.getElementById("btnCloseMonth");
-    if(btnCloseMonth){
-      btnCloseMonth.addEventListener("click", async ()=>{
-        btnCloseMonth.disabled = true;
-        try{ await closeMonthSnapshot(); }
-        finally { btnCloseMonth.disabled = false; }
-      });
-    }
->
+</html>
