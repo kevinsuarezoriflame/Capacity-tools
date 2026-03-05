@@ -756,9 +756,9 @@
 
           <div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;">
             <button class="btn primary" id="btnProcess">Procesar / Actualizar</button>
-            <button class="btn sm" id="btnCloudSave" title="Guarda stock, movimientos y manuales en la nube">💾 Guardar en PC</button>
-            <button class="btn sm" id="btnCloudLoad" title="Carga el último estado compartido desde la nube">📥 Cargar desde PC</button>
-            <span class="sub" id="cloudStatus" style="align-self:center; font-weight:800; color:var(--muted);">PC: —</span>
+            <button class="btn sm" id="btnCloudSave" title="Guarda stock, movimientos y manuales en la nube">☁ Guardar nube</button>
+            <button class="btn sm" id="btnCloudLoad" title="Carga el último estado compartido desde la nube">☁ Cargar nube</button>
+            <span class="sub" id="cloudStatus" style="align-self:center; font-weight:800; color:var(--muted);">Nube: —</span>
             <button class="btn" id="btnGotoLayout">Ir al Layout</button>
           </div>
         </div>
@@ -940,7 +940,6 @@
               <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                 <button class="btn sm" id="btnSaveOccToday" type="button">Guardar ocupación (hoy)</button>
                 <button class="btn ghost sm" id="btnViewOccHistory" type="button">📈 Ocupación</button>
-                <button class="btn danger sm" id="btnDeleteOccToday" type="button">🗑️ Borrar (hoy)</button>
               </div>
             </div>
 
@@ -1086,7 +1085,7 @@
           <div class="chartBox">
             <canvas id="occLine" width="860" height="360" style="width:100%;height:auto;"></canvas>
             <div class="hint" style="margin-top:10px;">
-              Fuente: guardado en PC (Local Storage) • % ocupación + pallets usados del panel.
+              Fuente: guardado diario automático (Firestore) • % ocupación + pallets usados del panel.
             </div>
           </div>
           <div class="sideBox">
@@ -1177,7 +1176,7 @@
 
   
 
-  // 🔗 Bridge para módulos (Firebase) - permite leer/escribir manualOverrides desde <script type="module">
+  // 🔗 Bridge para módulos (Firebase) - permite leer/escribir manualOverrides desde <script>
   window.__CT_getManualOverrides = () => manualOverrides;
   window.__CT_setManualOverrides = (arr) => {
     manualOverrides = Array.isArray(arr) ? arr : [];
@@ -3420,679 +3419,349 @@ function showInboundDetail(title, monthLabelText, rows){
   }
 </script>
 
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getFirestore, doc, setDoc, getDoc, getDocs, collection, query, where, orderBy, serverTimestamp, writeBatch, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-  import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
-  const firebaseConfig = {
-    apiKey: "AIzaSyBBrLGNfBdKiFdrn4VBpuzB2ZkOf_EbjpI",
-    authDomain: "capacity-tools-b09d6.firebaseapp.com",
-    projectId: "capacity-tools-b09d6",
-    storageBucket: "capacity-tools-b09d6.firebasestorage.app",
-    messagingSenderId: "241517150762",
-    appId: "1:241517150762:web:372131dc4ddb9ced14b953"
+
+<script>
+/* =======================
+   Local-only (PC) Controls
+   - Ocupación diaria: guardar % + pallets usados + breakdown
+   - Historial: gráfico lineal
+   - Borrar hoy
+   - Reemplaza "nube" por "PC" (export/import JSON)
+   ======================= */
+(function(){
+  "use strict";
+
+  const KEY_OCC = "capacityTools_occHistory_v1";
+  const KEY_MANUAL = "capacityTools_ioManual_v1";
+  const KEY_BACKUP_VERSION = "capacityTools_backup_v1";
+  const DATE_FMT = () => {
+    const d=new Date();
+    const y=d.getFullYear();
+    const m=String(d.getMonth()+1).padStart(2,"0");
+    const da=String(d.getDate()).padStart(2,"0");
+    return `${y}-${m}-${da}`;
   };
 
-  const app = initializeApp(firebaseConfig);
-  const db  = getFirestore(app);
-
-  // === AUTH (solo para escrituras) ===
-  const auth = getAuth(app);
-  const authProvider = new GoogleAuthProvider();
-
-  let _redirectChecked = false;
-  async function checkRedirectOnce(){
-    if(_redirectChecked) return;
-    _redirectChecked = true;
-    try{
-      await getRedirectResult(auth);
-    }catch(e){
-      // ignore
-    }
+  function safeNum(v){
+    const n=parseFloat(String(v||"").replace(/[^0-9.]/g,""));
+    return Number.isFinite(n)? n : null;
   }
-  // Ejecuta al cargar (no afecta UI)
-  checkRedirectOnce();
 
-  async function ensureAuth(){
-    // Solo pedimos login cuando necesitas escribir.
-    if(auth.currentUser) return auth.currentUser;
+  function getText(el){ return el ? String(el.textContent||"").trim() : ""; }
 
-    // Importante: NO hacer awaits antes del popup (evita bloqueos del navegador)
-    try{
-      const res = await signInWithPopup(auth, authProvider);
-      return res.user;
-    }catch(e){
-      const code = (e && e.code) ? e.code : "";
-      console.warn("Auth error:", code, e);
+  function findPalletsTable(){
+    // Preferred: tbody id tblPallets (exists in your layout)
+    const tbody = document.getElementById("tblPallets");
+    if(tbody) return tbody.closest("table");
+    // fallback: find a table that has headers "Clasificación" and "Pallets"
+    const tables=[...document.querySelectorAll("table")];
+    return tables.find(t=>{
+      const th=[...t.querySelectorAll("th")].map(x=>getText(x).toLowerCase());
+      return th.includes("clasificación") && th.includes("pallets");
+    }) || null;
+  }
 
-      if(code === "auth/unauthorized-domain"){
-        alert("⚠️ Firebase Auth bloqueó el dominio.
+  function getBreakdownFromTable(){
+    const table = findPalletsTable();
+    let productos=null, empaque=null, totalUsados=null;
 
-Ve a Firebase Console → Authentication → Configuración → Dominios autorizados y agrega:
-
-- kevinsuarezoriflame.github.io
-
-Luego recarga e intenta de nuevo.");
-        throw e;
+    if(table){
+      // rows in tbody
+      const rows=[...table.querySelectorAll("tbody tr")];
+      for(const r of rows){
+        const tds=[...r.querySelectorAll("td")];
+        if(tds.length<2) continue;
+        const name=getText(tds[0]).toLowerCase();
+        const val=safeNum(getText(tds[1]));
+        if(name.includes("producto")) productos=val;
+        if(name.includes("empaque")) empaque=val;
       }
-
-      // Popups bloqueados o cerrados → usamos redirect como fallback
-      if(code === "auth/popup-blocked" || code === "auth/popup-closed-by-user"){
-        alert("🔐 Para guardar en la nube necesito iniciar sesión con Google.
-
-Se abrirá una pantalla de inicio de sesión (redirect). Al volver, presiona Guardar nuevamente.");
-        await signInWithRedirect(auth, authProvider);
-        throw e;
+      // total used: prefer element with id pUsed; else tfoot last cell
+      const pUsedEl=document.getElementById("pUsed");
+      totalUsados = safeNum(getText(pUsedEl));
+      if(totalUsados==null){
+        const tf=[...table.querySelectorAll("tfoot td")];
+        if(tf.length>=2) totalUsados=safeNum(getText(tf[tf.length-1]));
       }
-
-      alert("❌ No se pudo iniciar sesión para guardar en la nube.
-
-Detalle: " + (code || "error") + "
-Revisa conexión / reglas.");
-      throw e;
     }
-  }
-
-
-  // Debug/visibilidad en consola (no altera UI)
-  onAuthStateChanged(auth, (u)=>{
-    if(u) console.log("✅ Auth:", u.email);
-  });
-
-
-  const COL = "ocupacion_diaria"; // docs: YYYY-MM-DD
-
-  function todayStr(){
-    const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth()+1).padStart(2,"0");
-    const day = String(d.getDate()).padStart(2,"0");
-    return `${y}-${m}-${day}`;
-  }
-
-  async function saveToday(pct, palletsUsed){
-    await ensureAuth();
-    const date = todayStr();
-    await setDoc(doc(db, COL, date), {
-      date,
-      pct: Number(pct),
-      palletsUsed: (palletsUsed==null ? null : Number(palletsUsed)),
-      updatedAt: serverTimestamp()
-    }, { merge:true });
-    return date;
-  }
-
-  async function loadSeries(){
-    const qy = query(collection(db, COL), orderBy("date","asc"));
-    const snap = await getDocs(qy);
-    return snap.docs.map(d=>d.data()).filter(x=>typeof x.pct==="number" && x.date);
-  }
-
-  window.occCloud = { saveToday, loadSeries, todayStr };
-
-
-  
-  // === Ocupación diaria (PC / Local Storage) ===
-  const btnSaveOccToday = document.getElementById("btnSaveOccToday");
-  const btnViewOccHistory = document.getElementById("btnViewOccHistory");
-  const btnDeleteOccToday = document.getElementById("btnDeleteOccToday");
-
-  const modalOcc = document.getElementById("modalOcc");
-  const btnCloseModalOcc = document.getElementById("btnCloseModalOcc");
-  const btnExportOccPng = document.getElementById("btnExportOccPng");
-
-  const occRangeLbl = document.getElementById("occRangeLbl");
-  const occLastDate = document.getElementById("occLastDate");
-  const occLastPct = document.getElementById("occLastPct");
-  const occLastPallets = document.getElementById("occLastPallets");
-  const occDays = document.getElementById("occDays");
-  const occLine = document.getElementById("occLine");
-
-  const OCC_KEY = "capacityTools_occHistory_v1";
-
-  function todayStr(){
-    // YYYY-MM-DD en hora local
-    const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth()+1).padStart(2,"0");
-    const da = String(d.getDate()).padStart(2,"0");
-    return `${y}-${m}-${da}`;
-  }
-
-  function loadOccMap(){
-    try{
-      const raw = localStorage.getItem(OCC_KEY);
-      const obj = raw ? JSON.parse(raw) : {};
-      return (obj && typeof obj === "object") ? obj : {};
-    }catch(_){ return {}; }
-  }
-
-  function saveOccMap(map){
-    localStorage.setItem(OCC_KEY, JSON.stringify(map || {}));
+    return { productos, empaque, totalUsados };
   }
 
   function getTodayMetrics(){
-    // capPct: "48.41%" ; pUsed: "305"
-    const pctEl = document.getElementById("capPct");
-    const pUsedEl = document.getElementById("pUsed");
-    const pct = pctEl ? parseFloat(String(pctEl.textContent||"").replace("%","").trim()) : NaN;
-    const pallets = pUsedEl ? parseFloat(String(pUsedEl.textContent||"").replace(/[^\d.]/g,"").trim()) : NaN;
+    // % bubble
+    const pctEl = document.getElementById("capPct") || document.querySelector("[data-cap-pct]");
+    const pct = safeNum(getText(pctEl));
 
-    if(!Number.isFinite(pct) || !Number.isFinite(pallets)) return null;
-    return { pct, pallets };
+    const { productos, empaque, totalUsados } = getBreakdownFromTable();
+
+    // Must have at least pct + totalUsados
+    if(pct==null || totalUsados==null) return null;
+    return { date: DATE_FMT(), pct, totalUsados, productos, empaque };
   }
 
-  function occToSeries(map){
-    const rows = Object.entries(map || {})
-      .map(([date, v])=>({ date, pct: Number(v?.pct), pallets: Number(v?.pallets) }))
-      .filter(x=>x.date && Number.isFinite(x.pct) && Number.isFinite(x.pallets))
-      .sort((a,b)=>a.date.localeCompare(b.date));
-
-    const seriesPct = rows.map(r=>({ label: r.date, value: r.pct }));
-    const last = rows.length ? rows[rows.length-1] : null;
-    return { rows, seriesPct, last };
+  function readOcc(){
+    try{ return JSON.parse(localStorage.getItem(KEY_OCC) || "{}"); }
+    catch(e){ return {}; }
+  }
+  function writeOcc(obj){
+    localStorage.setItem(KEY_OCC, JSON.stringify(obj));
   }
 
-  function openOccModal(){
-    if(!modalOcc) return;
-
-    const map = loadOccMap();
-    const { rows, seriesPct, last } = occToSeries(map);
-
-    // labels
-    if(occRangeLbl){
-      if(rows.length){
-        occRangeLbl.textContent = `${rows[0].date} → ${rows[rows.length-1].date}`;
-      }else{
-        occRangeLbl.textContent = "—";
-      }
+  function toast(msg){
+    // simple non-invasive toast
+    let t=document.getElementById("__ct_toast");
+    if(!t){
+      t=document.createElement("div");
+      t.id="__ct_toast";
+      t.style.cssText="position:fixed;right:16px;bottom:16px;z-index:99999;background:#0f172a;color:#fff;padding:10px 12px;border-radius:12px;box-shadow:0 10px 24px rgba(15,23,42,.20);font:600 13px system-ui;max-width:360px;opacity:0;transform:translateY(6px);transition:.18s;";
+      document.body.appendChild(t);
     }
+    t.textContent=msg;
+    t.style.opacity="1";
+    t.style.transform="translateY(0)";
+    clearTimeout(window.__ct_toast_timer);
+    window.__ct_toast_timer=setTimeout(()=>{ t.style.opacity="0"; t.style.transform="translateY(6px)"; }, 2200);
+  }
 
-    if(occLastDate) occLastDate.textContent = last ? last.date : "—";
-    if(occLastPct) occLastPct.textContent = last ? `${last.pct.toFixed(2)}%` : "—";
-    if(occLastPallets) occLastPallets.textContent = last ? fmtInt(last.pallets) : "—";
-    if(occDays) occDays.textContent = rows.length ? fmtInt(rows.length) : "0";
+  async function ensureChartJS(){
+    if(window.Chart) return true;
+    return new Promise((resolve)=>{
+      const s=document.createElement("script");
+      s.src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js";
+      s.onload=()=>resolve(true);
+      s.onerror=()=>resolve(false);
+      document.head.appendChild(s);
+    });
+  }
 
-    modalOcc.classList.add("open");
+  function buildOccModalIfNeeded(){
+    let modal=document.getElementById("modalOcc");
+    if(modal) return modal;
 
-    if(occLine){
-      drawLineChart(occLine, seriesPct);
-    }
-
-    if(btnExportOccPng && occLine){
-      btnExportOccPng.onclick = ()=>{
-        const url = occLine.toDataURL("image/png");
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `ocupacion_${todayStr()}.png`;
-        a.click();
-      };
-    }
+    modal=document.createElement("div");
+    modal.id="modalOcc";
+    modal.style.cssText="position:fixed;inset:0;background:rgba(15,23,42,.55);display:none;align-items:center;justify-content:center;z-index:9999;padding:16px;";
+    modal.innerHTML=`
+      <div style="width:min(920px, 96vw);background:#fff;border-radius:16px;box-shadow:0 18px 45px rgba(15,23,42,.25);overflow:hidden;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #e2e8f0;">
+          <div style="font:800 14px system-ui;color:#0f172a;">📈 Ocupación guardada (PC)</div>
+          <button id="btnCloseOcc" type="button" class="btn sm" style="background:#f1f5f9;color:#0f172a;">Cerrar</button>
+        </div>
+        <div style="padding:14px;">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+            <div style="font:700 12px system-ui;color:#334155;">Último registro:</div>
+            <div id="occLast" style="font:700 12px system-ui;color:#0f172a;">—</div>
+          </div>
+          <canvas id="occCanvas" height="110"></canvas>
+          <div style="margin-top:10px;font:600 12px system-ui;color:#64748b;">
+            Se guarda: <b>% ocupación</b> + <b>Total usados</b> (+ Productos / M. Empaque si aplica). Todo queda en esta PC.
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener("click",(e)=>{ if(e.target===modal) closeOccModal(); });
+    modal.querySelector("#btnCloseOcc").addEventListener("click", closeOccModal);
+    return modal;
   }
 
   function closeOccModal(){
-    if(modalOcc) modalOcc.classList.remove("open");
+    const m=document.getElementById("modalOcc");
+    if(m) m.style.display="none";
   }
 
-  if(btnCloseModalOcc){
-    btnCloseModalOcc.addEventListener("click", closeOccModal);
-  }
+  let occChart=null;
 
-  if(btnViewOccHistory){
-    btnViewOccHistory.addEventListener("click", openOccModal);
-  }
+  async function openOccModal(){
+    const ok=await ensureChartJS();
+    if(!ok){ alert("No se pudo cargar Chart.js. Revisa conexión."); return; }
 
-  if(btnSaveOccToday){
-    btnSaveOccToday.addEventListener("click", ()=>{
-      const m = getTodayMetrics();
-      if(!m){
-        alert("⚠️ No puedo guardar: primero calcula/actualiza la ocupación (que haya % y pallets usados).");
-        return;
+    const modal=buildOccModalIfNeeded();
+    const data=readOcc();
+    const dates=Object.keys(data).sort();
+    const pctSeries=dates.map(d=>data[d].pct);
+    const palletSeries=dates.map(d=>data[d].totalUsados);
+
+    const last=dates.length? data[dates[dates.length-1]] : null;
+    const lastLbl = last ? `${dates[dates.length-1]} · ${last.pct.toFixed(2)}% · ${last.totalUsados} pallets` : "—";
+    modal.querySelector("#occLast").textContent=lastLbl;
+
+    const ctx=modal.querySelector("#occCanvas").getContext("2d");
+    if(occChart){ occChart.destroy(); occChart=null; }
+    occChart=new Chart(ctx,{
+      type:"line",
+      data:{
+        labels:dates,
+        datasets:[
+          { label:"% Ocupación", data:pctSeries, tension:0.25, borderWidth:2, pointRadius:3 },
+          { label:"Pallets usados", data:palletSeries, tension:0.25, borderWidth:2, pointRadius:3, yAxisID:"y1" }
+        ]
+      },
+      options:{
+        responsive:true,
+        maintainAspectRatio:false,
+        interaction:{ mode:"index", intersect:false },
+        scales:{
+          y:{ title:{ display:true, text:"%" } },
+          y1:{ position:"right", grid:{ drawOnChartArea:false }, title:{ display:true, text:"Pallets" } }
+        },
+        plugins:{
+          legend:{ display:true }
+        }
       }
-      const date = todayStr();
-      const map = loadOccMap();
-      map[date] = { pct: m.pct, pallets: m.pallets, ts: Date.now() };
-      saveOccMap(map);
+    });
 
-      // feedback rápido
+    modal.style.display="flex";
+  }
+
+  function saveOccToday(){
+    const m=getTodayMetrics();
+    if(!m){
+      alert("⚠️ No puedo guardar: asegúrate de que ya se muestre el % de ocupación y el Total usados.");
+      return;
+    }
+    const store=readOcc();
+    store[m.date]={ pct:m.pct, totalUsados:m.totalUsados, productos:m.productos, empaque:m.empaque, ts:Date.now() };
+    writeOcc(store);
+    toast(`✅ Guardado (${m.date}): ${m.pct.toFixed(2)}% · ${m.totalUsados} pallets`);
+  }
+
+  function deleteOccToday(){
+    const d=DATE_FMT();
+    const store=readOcc();
+    if(!store[d]){
+      alert("No existe un registro guardado para hoy.");
+      return;
+    }
+    if(!confirm(`¿Borrar la ocupación guardada de hoy (${d})?`)) return;
+    delete store[d];
+    writeOcc(store);
+    toast(`🗑️ Borrado (${d})`);
+  }
+
+  // === Export / Import (PC) ===
+  function collectBackup(){
+    const payload = {
+      __version: KEY_BACKUP_VERSION,
+      exportedAt: new Date().toISOString(),
+      keys: {}
+    };
+    // Export everything under capacityTools_*
+    for(let i=0;i<localStorage.length;i++){
+      const k=localStorage.key(i);
+      if(!k) continue;
+      if(k.startsWith("capacityTools_")){
+        payload.keys[k]=localStorage.getItem(k);
+      }
+    }
+    // Ensure occ + manual in payload even if naming differs
+    if(payload.keys[KEY_OCC]==null) payload.keys[KEY_OCC]=localStorage.getItem(KEY_OCC);
+    if(payload.keys[KEY_MANUAL]==null) payload.keys[KEY_MANUAL]=localStorage.getItem(KEY_MANUAL);
+    return payload;
+  }
+
+  function downloadJSON(obj, filename){
+    const blob=new Blob([JSON.stringify(obj,null,2)], {type:"application/json"});
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download=filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 0);
+  }
+
+  function exportPC(){
+    const payload=collectBackup();
+    const fname=`capacity_tools_backup_${DATE_FMT()}.json`;
+    downloadJSON(payload, fname);
+    toast("💾 Backup descargado en tu PC");
+  }
+
+  function importPC(file){
+    const reader=new FileReader();
+    reader.onload=()=>{
       try{
-        const cs = document.getElementById("cloudStatus");
-        if(cs) cs.textContent = `PC: guardado ✅ (${date} • ${m.pct.toFixed(2)}% • ${fmtInt(m.pallets)} pallets)`;
-      }catch(_){}
-
-      alert(`✅ Guardado en PC (${date})\nOcupación: ${m.pct.toFixed(2)}%\nPallets usados: ${fmtInt(m.pallets)}`);
-    });
-  }
-
-  if(btnDeleteOccToday){
-    btnDeleteOccToday.addEventListener("click", ()=>{
-      const date = todayStr();
-      const map = loadOccMap();
-      if(!map[date]){
-        alert(`ℹ️ No hay ocupación guardada para hoy (${date}).`);
-        return;
+        const obj=JSON.parse(String(reader.result||"{}"));
+        if(!obj || !obj.keys){ throw new Error("Formato inválido"); }
+        for(const [k,v] of Object.entries(obj.keys)){
+          if(v==null) continue;
+          localStorage.setItem(k, String(v));
+        }
+        toast("📥 Backup cargado. Recargando…");
+        setTimeout(()=>location.reload(), 600);
+      }catch(e){
+        alert("No se pudo importar el backup: "+e.message);
       }
-      const ok = confirm(`¿Borrar la ocupación guardada de HOY (${date})?\nEsto no afecta otros días.`);
-      if(!ok) return;
-      delete map[date];
-      saveOccMap(map);
-
-      try{
-        const cs = document.getElementById("cloudStatus");
-        if(cs) cs.textContent = `PC: ocupación de hoy borrada 🗑️ (${date})`;
-      }catch(_){}
-
-      alert(`🗑️ Listo. Ocupación de hoy (${date}) eliminada.`);
-    });
-  }
-// === Colaborativo FULL (Firestore) ===
-  // Guarda/lee el ESTADO compartido (stock pegado, movimientos pegados y overrides manuales) por mes: ds=YYYY-MM
-  const DS_COL = "datasets";
-  const DS_STATE_DOC = "state/current";
-  const DS_MANIFEST_DOC = "state/manifest";
-  const DS_BLOBS = "blobs";
-  const MAX_CHUNK = 180000; // chars por doc (seguro bajo el límite)
-
-  function pad2(n){ return String(n).padStart(2,"0"); }
-  function monthId(d=new Date()){ return `${d.getFullYear()}-${pad2(d.getMonth()+1)}`; }
-
-  function getClientId(){
-    const k="capacityTools_clientId_v1";
-    let v = localStorage.getItem(k);
-    if(!v){
-      v = "ct_" + Math.random().toString(16).slice(2) + "_" + Date.now().toString(16);
-      localStorage.setItem(k, v);
-    }
-    return v;
+    };
+    reader.readAsText(file);
   }
 
-  function getDatasetId(){
-    const sp = new URLSearchParams(location.search);
-    const ds = sp.get("ds");
-    // Modo recomendado: dataset único compartido (ACTIVO)
-    if(ds && /^active$/i.test(ds)) return "ACTIVE";
-    // Si quieres consultar un histórico por mes, aún puedes usar ds=YYYY-MM
-    if(ds && /^\d{4}-\d{2}$/.test(ds)) return ds;
-    return "ACTIVE";
-  }
-  }
+  function wireButtons(){
+    // Occupation buttons (from your UI)
+    const btnSave = document.getElementById("btnSaveOccToday");
+    const btnView = document.getElementById("btnViewOccHistory");
+    const btnDel  = document.getElementById("btnDeleteOccToday");
 
-  function splitChunks(text){
-    const t = String(text||"");
-    const out = [];
-    for(let i=0;i<t.length;i+=MAX_CHUNK){
-      out.push(t.slice(i, i+MAX_CHUNK));
-    }
-    return out.length ? out : [""];
-  }
+    if(btnSave) btnSave.addEventListener("click", saveOccToday);
+    if(btnView) btnView.addEventListener("click", openOccModal);
+    if(btnDel)  btnDel.addEventListener("click", deleteOccToday);
 
-  async function saveTextAsChunks(dsId, type, text){
-    await ensureAuth();
-    const chunks = splitChunks(text);
-    const blobsRef = collection(db, DS_COL, dsId, DS_BLOBS);
+    // Replace cloud buttons to PC backup (if they exist)
+    const btnCloudSave = document.getElementById("btnCloudSave");
+    const btnCloudLoad = document.getElementById("btnCloudLoad");
+    const btnCloseMonth = document.getElementById("btnCloseMonth");
+    const cloudStatus = document.getElementById("cloudStatus");
 
-    // Lee existentes para borrar sobrantes si la nueva versión trae menos chunks
-    const qOld = query(blobsRef, where("type","==", type), orderBy("i","asc"));
-    const oldSnap = await getDocs(qOld);
-    const oldCount = oldSnap.size;
-
-    const batch = writeBatch(db);
-
-    for(let i=0;i<chunks.length;i++){
-      const id = `${type}_${String(i).padStart(3,"0")}`;
-      batch.set(doc(db, DS_COL, dsId, DS_BLOBS, id), {
-        type, i, data: chunks[i],
-        updatedAt: serverTimestamp()
-      }, { merge:true });
-    }
-
-    // borra chunks sobrantes
-    for(let i=chunks.length;i<oldCount;i++){
-      const id = `${type}_${String(i).padStart(3,"0")}`;
-      batch.delete(doc(db, DS_COL, dsId, DS_BLOBS, id));
-    }
-
-    // actualiza manifest
-    batch.set(doc(db, DS_COL, dsId, ...DS_MANIFEST_DOC.split("/")), {
-      dsId,
-      [`${type}Chunks`]: chunks.length,
-      updatedAt: serverTimestamp(),
-      updatedBy: getClientId()
-    }, { merge:true });
-
-    await batch.commit();
-  }
-
-  async function loadTextFromChunks(dsId, type){
-    const manRef = doc(db, DS_COL, dsId, ...DS_MANIFEST_DOC.split("/"));
-    const manSnap = await getDoc(manRef);
-    const man = manSnap.exists() ? manSnap.data() : {};
-    const n = Number(man[`${type}Chunks`] || 0);
-
-    if(!n){
-      // fallback: intenta traer todos los chunks por query
-      const qy = query(collection(db, DS_COL, dsId, DS_BLOBS), where("type","==", type), orderBy("i","asc"));
-      const snap = await getDocs(qy);
-      return snap.docs.map(d=>d.data()?.data||"").join("");
-    }
-
-    const parts = [];
-    for(let i=0;i<n;i++){
-      const id = `${type}_${String(i).padStart(3,"0")}`;
-      const s = await getDoc(doc(db, DS_COL, dsId, DS_BLOBS, id));
-      if(s.exists()) parts.push(String(s.data()?.data||""));
-    }
-    return parts.join("");
-  }
-
-  async function saveManualOverrides(dsId, overrides){
-    await ensureAuth();
-    await setDoc(doc(db, DS_COL, dsId, ...DS_STATE_DOC.split("/")), {
-      dsId,
-      manualOverrides: Array.isArray(overrides) ? overrides : [],
-      updatedAt: serverTimestamp(),
-      updatedBy: getClientId()
-    }, { merge:true });
-  }
-
-  async function loadManualOverrides(dsId){
-    const snap = await getDoc(doc(db, DS_COL, dsId, ...DS_STATE_DOC.split("/")));
-    if(!snap.exists()) return [];
-    const d = snap.data() || {};
-    return Array.isArray(d.manualOverrides) ? d.manualOverrides : [];
-  }
-
-  async function cloudSaveAll(){
-    await ensureAuth();
-    const dsId = getDatasetId();
-    const txtStock = document.getElementById("txtStock");
-    const txtMoves = document.getElementById("txtMoves");
-    const overrides = (window.__CT_getManualOverrides ? window.__CT_getManualOverrides() : []);
-
-    const stock = txtStock ? txtStock.value : "";
-    const moves = txtMoves ? txtMoves.value : "";
-
-    // Guardar
-    await saveTextAsChunks(dsId, "stock", stock);
-    await saveTextAsChunks(dsId, "moves", moves);
-    await saveManualOverrides(dsId, overrides);
-
-    // UI feedback
-    const cs = document.getElementById("cloudStatus");
-    if(cs) cs.textContent = `PC: ${dsId} • guardado ✅`;
-    return dsId;
-  }
-
-  async function cloudSaveAllTo(targetDsId){
-    await ensureAuth();
-    const txtStock = document.getElementById("txtStock");
-    const txtMoves = document.getElementById("txtMoves");
-    const overrides = (window.__CT_getManualOverrides ? window.__CT_getManualOverrides() : []);
-    const stock = txtStock ? txtStock.value : "";
-    const moves = txtMoves ? txtMoves.value : "";
-    await saveTextAsChunks(targetDsId, "stock", stock);
-    await saveTextAsChunks(targetDsId, "moves", moves);
-    await saveManualOverrides(targetDsId, overrides);
-    return targetDsId;
-  }
-
-  function inferMonthFromMovesText(){
-    const txtMoves = document.getElementById("txtMoves");
-    const t = (txtMoves && txtMoves.value) ? txtMoves.value : "";
-    // Busca fechas dd/mm/yyyy o dd/mm/yyyy hh:mm
-    const reDate = /\b(\d{2})\/(\d{2})\/(\d{4})\b/g;
-    let m, best=null;
-    while((m = reDate.exec(t))){
-      const dd = Number(m[1]), mm = Number(m[2]), yyyy = Number(m[3]);
-      if(mm>=1 && mm<=12 && dd>=1 && dd<=31){
-        const key = yyyy*100 + mm;
-        if(best==null || key>best) best = key;
-      }
-    }
-    if(best!=null){
-      const yyyy = Math.floor(best/100);
-      const mm = String(best%100).padStart(2,"0");
-      return `${yyyy}-${mm}`;
-    }
-    // fallback: mes actual
-    return monthId(new Date());
-  }
-
-  async function clearActiveDatasetCloudAndUI(){
-    await ensureAuth();
-    const activeId = "ACTIVE";
-    await saveTextAsChunks(activeId, "stock", "");
-    await saveTextAsChunks(activeId, "moves", "");
-    await saveManualOverrides(activeId, []);
-    const txtStock = document.getElementById("txtStock");
-    const txtMoves = document.getElementById("txtMoves");
-    if(txtStock) txtStock.value = "";
-    if(txtMoves) txtMoves.value = "";
-    if(window.__CT_setManualOverrides) window.__CT_setManualOverrides([]);
-    const btnProcess = document.getElementById("btnProcess");
-    if(btnProcess) btnProcess.click();
-    const cs = document.getElementById("cloudStatus");
-    if(cs) cs.textContent = `PC: ACTIVE • vacío ✅`;
-  }
-
-  async function closeMonthSnapshot(){
-    // Guarda snapshot mensual (YYYY-MM) y deja ACTIVE en blanco para nueva data.
-    const targetMonth = inferMonthFromMovesText();
-    if(!confirm(`Vas a cerrar el mes ${targetMonth}.\n\nEsto hará:\n1) Guardar un snapshot mensual en la nube (ds=${targetMonth})\n2) Vaciar el dataset ACTIVE para empezar una nueva carga\n\n¿Continuar?`)) return;
-    try{
-      // 1) snapshot mensual
-      await cloudSaveAllTo(targetMonth);
-      // 2) limpiar ACTIVE
-      await clearActiveDatasetCloudAndUI();
-      alert(`✅ Mes ${targetMonth} cerrado.\nSnapshot guardado (ds=${targetMonth}).\nACTIVE quedó vacío para nueva data.`);
-    }catch(e){
-      console.error(e);
-      const code = e && e.code ? e.code : "";
-      alert("❌ No se pudo cerrar el mes en la nube. " + (code ? `(${code})` : "") + "\nRevisa Auth / Rules / conexión.");
-    }
-  }
-
-  async function cloudLoadAll(){
-    const dsId = getDatasetId();
-
-    const stock = await loadTextFromChunks(dsId, "stock");
-    const moves = await loadTextFromChunks(dsId, "moves");
-    const overrides = await loadManualOverrides(dsId);
-
-    const txtStock = document.getElementById("txtStock");
-    const txtMoves = document.getElementById("txtMoves");
-    if(txtStock) txtStock.value = stock || "";
-    if(txtMoves) txtMoves.value = moves || "";
-
-    if(window.__CT_setManualOverrides) window.__CT_setManualOverrides(overrides);
-
-    // Procesar automáticamente para que todos vean resultados iguales
-    const btnProcess = document.getElementById("btnProcess");
-    if(btnProcess) btnProcess.click();
-
-    const cs = document.getElementById("cloudStatus");
-    if(cs) cs.textContent = `PC: ${dsId} • cargado ✅`;
-    return dsId;
-  }
-
-  async function cloudSaveAllTo(targetDsId){
-    await ensureAuth();
-    const txtStock = document.getElementById("txtStock");
-    const txtMoves = document.getElementById("txtMoves");
-    const overrides = (window.__CT_getManualOverrides ? window.__CT_getManualOverrides() : []);
-    const stock = txtStock ? txtStock.value : "";
-    const moves = txtMoves ? txtMoves.value : "";
-    await saveTextAsChunks(targetDsId, "stock", stock);
-    await saveTextAsChunks(targetDsId, "moves", moves);
-    await saveManualOverrides(targetDsId, overrides);
-    return targetDsId;
-  }
-
-  function inferMonthFromMovesText(){
-    const txtMoves = document.getElementById("txtMoves");
-    const t = (txtMoves && txtMoves.value) ? txtMoves.value : "";
-    // Busca fechas dd/mm/yyyy o dd/mm/yyyy hh:mm
-    const reDate = /\b(\d{2})\/(\d{2})\/(\d{4})\b/g;
-    let m, best=null;
-    while((m = reDate.exec(t))){
-      const dd = Number(m[1]), mm = Number(m[2]), yyyy = Number(m[3]);
-      if(mm>=1 && mm<=12 && dd>=1 && dd<=31){
-        const key = yyyy*100 + mm;
-        if(best==null || key>best) best = key;
-      }
-    }
-    if(best!=null){
-      const yyyy = Math.floor(best/100);
-      const mm = String(best%100).padStart(2,"0");
-      return `${yyyy}-${mm}`;
-    }
-    // fallback: mes actual
-    return monthId(new Date());
-  }
-
-  async function clearActiveDatasetCloudAndUI(){
-    await ensureAuth();
-    const activeId = "ACTIVE";
-    await saveTextAsChunks(activeId, "stock", "");
-    await saveTextAsChunks(activeId, "moves", "");
-    await saveManualOverrides(activeId, []);
-    const txtStock = document.getElementById("txtStock");
-    const txtMoves = document.getElementById("txtMoves");
-    if(txtStock) txtStock.value = "";
-    if(txtMoves) txtMoves.value = "";
-    if(window.__CT_setManualOverrides) window.__CT_setManualOverrides([]);
-    const btnProcess = document.getElementById("btnProcess");
-    if(btnProcess) btnProcess.click();
-    const cs = document.getElementById("cloudStatus");
-    if(cs) cs.textContent = `PC: ACTIVE • vacío ✅`;
-  }
-
-  async function closeMonthSnapshot(){
-    // Guarda snapshot mensual (YYYY-MM) y deja ACTIVE en blanco para nueva data.
-    const targetMonth = inferMonthFromMovesText();
-    if(!confirm(`Vas a cerrar el mes ${targetMonth}.\n\nEsto hará:\n1) Guardar un snapshot mensual en la nube (ds=${targetMonth})\n2) Vaciar el dataset ACTIVE para empezar una nueva carga\n\n¿Continuar?`)) return;
-    try{
-      // 1) snapshot mensual
-      await cloudSaveAllTo(targetMonth);
-      // 2) limpiar ACTIVE
-      await clearActiveDatasetCloudAndUI();
-      alert(`✅ Mes ${targetMonth} cerrado.\nSnapshot guardado (ds=${targetMonth}).\nACTIVE quedó vacío para nueva data.`);
-    }catch(e){
-      console.error(e);
-      const code = e && e.code ? e.code : "";
-      alert("❌ No se pudo cerrar el mes en la nube. " + (code ? `(${code})` : "") + "\nRevisa Auth / Rules / conexión.");
-    }
-  }
-
-  
-function setupCloudUI(){
-    const btnSave = document.getElementById("btnCloudSave");
-    const btnLoad = document.getElementById("btnCloudLoad");
-    const cs = document.getElementById("cloudStatus");
-
-    // Etiqueta clara: ya no hay nube
-    if(cs) cs.textContent = "PC: Local Storage";
-
-    // Exporta un backup JSON de TODO lo relevante que ya se guarda en localStorage
-    function buildBackup(){
-      const keys = [
-        // datasets y cargas (según tu HTML base)
-        "capacityTools_dataset_active",
-        "capacityTools_datasets_index",
-        "capacityTools_ioRows_v1",
-        "capacityTools_ioManual_v1",
-        "capacityTools_month_closures_v1",
-        "capacityTools_occHistory_v1",
-        // agrega aquí otras llaves que tu base ya usa si las tienes
-      ];
-      const payload = { meta:{ ts: Date.now(), app:"CapacityTools", mode:"LOCAL_PC" }, data:{} };
-      keys.forEach(k=>{
-        const v = localStorage.getItem(k);
-        if(v !== null) payload.data[k] = v;
+    // Hidden file input for import
+    let fileInput=document.getElementById("__ct_import_file");
+    if(!fileInput){
+      fileInput=document.createElement("input");
+      fileInput.type="file";
+      fileInput.accept="application/json";
+      fileInput.id="__ct_import_file";
+      fileInput.style.display="none";
+      fileInput.addEventListener("change",(e)=>{
+        const f=e.target.files && e.target.files[0];
+        if(f) importPC(f);
+        e.target.value="";
       });
-      return payload;
+      document.body.appendChild(fileInput);
     }
 
-    function downloadJSON(obj, filename){
-      const blob = new Blob([JSON.stringify(obj, null, 2)], {type:"application/json"});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      a.click();
-      setTimeout(()=>URL.revokeObjectURL(url), 800);
+    if(btnCloudSave){
+      btnCloudSave.textContent="💾 Guardar en PC";
+      btnCloudSave.addEventListener("click", exportPC);
     }
-
-    function pickJSONFile(onFile){
-      const inp = document.createElement("input");
-      inp.type = "file";
-      inp.accept = "application/json,.json";
-      inp.onchange = ()=>{
-        const f = inp.files && inp.files[0];
-        if(!f) return;
-        onFile(f);
-      };
-      inp.click();
+    if(btnCloudLoad){
+      btnCloudLoad.textContent="📥 Cargar desde PC";
+      btnCloudLoad.addEventListener("click", ()=>fileInput.click());
     }
-
-    async function importBackupFile(file){
-      const text = await file.text();
-      let obj;
-      try{ obj = JSON.parse(text); }catch(e){ throw new Error("JSON inválido"); }
-      if(!obj || !obj.data || typeof obj.data !== "object") throw new Error("Formato de backup no válido");
-
-      Object.entries(obj.data).forEach(([k,v])=>{
-        if(typeof v === "string") localStorage.setItem(k, v);
+    if(btnCloseMonth){
+      btnCloseMonth.textContent="📌 Cerrar mes (PC)";
+      btnCloseMonth.addEventListener("click", ()=>{
+        // Snapshot: store backup under a month key, then keep working
+        const now=new Date();
+        const ym=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+        const key=`capacityTools_monthClose_${ym}`;
+        const payload=collectBackup();
+        localStorage.setItem(key, JSON.stringify(payload));
+        toast(`📌 Mes ${ym} guardado en esta PC`);
       });
     }
-
-    if(btnSave){
-      btnSave.addEventListener("click", ()=>{
-        const b = buildBackup();
-        const d = new Date();
-        const y = d.getFullYear();
-        const m = String(d.getMonth()+1).padStart(2,"0");
-        const da = String(d.getDate()).padStart(2,"0");
-        downloadJSON(b, `capacity_tools_backup_${y}-${m}-${da}.json`);
-        if(cs) cs.textContent = `PC: backup descargado ✅ (${y}-${m}-${da})`;
-      });
-    }
-
-    if(btnLoad){
-      btnLoad.addEventListener("click", ()=>{
-        pickJSONFile(async (file)=>{
-          try{
-            await importBackupFile(file);
-            if(cs) cs.textContent = `PC: backup cargado ✅ (${file.name})`;
-            alert("✅ Backup cargado. Se recargará la página para aplicar todo.");
-            location.reload();
-          }catch(e){
-            console.error(e);
-            alert("❌ No se pudo cargar el backup. " + (e?.message || ""));
-          }
-        });
-      });
+    if(cloudStatus){
+      cloudStatus.textContent="Modo PC (Local Storage)";
     }
   }
 
-  // Inicializar UI colaborativa
-  try{ setupCloudUI(); }catch(e){ console.warn("Cloud UI init:", e); }
-
-  // Exponer helpers por si los necesitas luego
-  window.cloudDS = { getDatasetId, cloudSaveAll, cloudLoadAll };
-
-
-  // Botón Cerrar mes (snapshot mensual)
-  const btnCloseMonth = document.getElementById("btnCloseMonth");
-  if (btnCloseMonth) {
-    btnCloseMonth.addEventListener("click", async () => {
-      btnCloseMonth.disabled = true;
-      try { await closeMonthSnapshot(); }
-      finally { btnCloseMonth.disabled = false; }
-    });
+  // Make sure wiring happens after all scripts created the DOM
+  if(document.readyState==="loading"){
+    document.addEventListener("DOMContentLoaded", wireButtons);
+  }else{
+    wireButtons();
   }
-
+})();
 </script>
+
 </body>
 </html>
