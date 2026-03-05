@@ -940,6 +940,7 @@
               <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                 <button class="btn sm" id="btnSaveOccToday" type="button">Guardar ocupación (hoy)</button>
                 <button class="btn ghost sm" id="btnViewOccHistory" type="button">📈 Ocupación</button>
+                <button class="btn danger sm" id="btnDeleteOccToday" type="button" title="Borrar ocupación guardada de hoy">🗑️</button>
               </div>
             </div>
 
@@ -3554,6 +3555,13 @@ function showInboundDetail(title, monthLabelText, rows){
             <div id="occLast" style="font:700 12px system-ui;color:#0f172a;">—</div>
           </div>
           <canvas id="occCanvas" height="110"></canvas>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px;">
+            <div style="font:700 12px system-ui;color:#334155;">Mes:</div>
+            <select id="occMonth" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:10px;font:700 12px system-ui;"></select>
+            <div style="font:600 12px system-ui;color:#64748b;">Tip: guarda día a día y filtra por mes.</div>
+          </div>
+          <div id="occList" style="margin-top:10px;max-height:160px;overflow:auto;border:1px solid #e2e8f0;border-radius:12px;"></div>
+
           <div style="margin-top:10px;font:600 12px system-ui;color:#64748b;">
             Se guarda: <b>% ocupación</b> + <b>Total usados</b> (+ Productos / M. Empaque si aplica). Todo queda en esta PC.
           </div>
@@ -3579,38 +3587,105 @@ function showInboundDetail(title, monthLabelText, rows){
 
     const modal=buildOccModalIfNeeded();
     const data=readOcc();
-    const dates=Object.keys(data).sort();
-    const pctSeries=dates.map(d=>data[d].pct);
-    const palletSeries=dates.map(d=>data[d].totalUsados);
 
-    const last=dates.length? data[dates[dates.length-1]] : null;
-    const lastLbl = last ? `${dates[dates.length-1]} · ${last.pct.toFixed(2)}% · ${last.totalUsados} pallets` : "—";
-    modal.querySelector("#occLast").textContent=lastLbl;
+    const allDates=Object.keys(data).sort();
+    const monthSet=new Set(allDates.map(d=>d.slice(0,7)));
+    const months=[...monthSet].sort();
+    const sel=modal.querySelector("#occMonth");
+    const list=modal.querySelector("#occList");
 
-    const ctx=modal.querySelector("#occCanvas").getContext("2d");
-    if(occChart){ occChart.destroy(); occChart=null; }
-    occChart=new Chart(ctx,{
-      type:"line",
-      data:{
-        labels:dates,
-        datasets:[
-          { label:"% Ocupación", data:pctSeries, tension:0.25, borderWidth:2, pointRadius:3 },
-          { label:"Pallets usados", data:palletSeries, tension:0.25, borderWidth:2, pointRadius:3, yAxisID:"y1" }
-        ]
-      },
-      options:{
-        responsive:true,
-        maintainAspectRatio:false,
-        interaction:{ mode:"index", intersect:false },
-        scales:{
-          y:{ title:{ display:true, text:"%" } },
-          y1:{ position:"right", grid:{ drawOnChartArea:false }, title:{ display:true, text:"Pallets" } }
-        },
-        plugins:{
-          legend:{ display:true }
+    // Build month options (keep selection if already set)
+    const prev = sel && sel.value ? sel.value : null;
+    if(sel){
+      sel.innerHTML = months.map(m=>`<option value="${m}">${m}</option>`).join("");
+      const currentYM = (()=>{
+        const now=new Date(); return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+      })();
+      sel.value = prev && months.includes(prev) ? prev : (months.includes(currentYM) ? currentYM : (months[months.length-1]||""));
+    }
+
+    function renderForMonth(ym){
+      const dates = allDates.filter(d=>d.startsWith(ym));
+      const pctSeries = dates.map(d=>data[d].pct);
+      const palletSeries = dates.map(d=>data[d].totalUsados);
+
+      const last=dates.length? data[dates[dates.length-1]] : null;
+      const lastLbl = last ? `${dates[dates.length-1]} · ${last.pct.toFixed(2)}% · ${last.totalUsados} pallets` : "—";
+      modal.querySelector("#occLast").textContent=lastLbl;
+
+      // Build list
+      if(list){
+        if(!dates.length){
+          list.innerHTML = `<div style="padding:10px 12px;font:700 12px system-ui;color:#64748b;">No hay registros en ${ym}.</div>`;
+        }else{
+          const rows = dates.map(d=>{
+            const r=data[d];
+            return `
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-bottom:1px solid #e2e8f0;">
+                <div style="font:800 12px system-ui;color:#0f172a;">${d}</div>
+                <div style="display:flex;gap:10px;align-items:center;">
+                  <div style="font:700 12px system-ui;color:#334155;">${r.pct.toFixed(2)}%</div>
+                  <div style="font:700 12px system-ui;color:#334155;">${r.totalUsados} pallets</div>
+                  <button type="button" data-occ-del="${d}" title="Borrar día" style="border:1px solid #fecaca;background:#fff5f5;color:#991b1b;border-radius:10px;padding:6px 8px;cursor:pointer;font:800 12px system-ui;">🗑️</button>
+                </div>
+              </div>`;
+          }).join("");
+          list.innerHTML = rows;
         }
+        // wire delete buttons
+        list.querySelectorAll("[data-occ-del]").forEach(btn=>{
+          btn.addEventListener("click", ()=>{
+            const day=btn.getAttribute("data-occ-del");
+            if(!day || !data[day]) return;
+            if(!confirm(`¿Borrar la ocupación guardada de ${day}?`)) return;
+            const store=readOcc();
+            delete store[day];
+            writeOcc(store);
+            toast(`🗑️ Borrado (${day})`);
+            // refresh in-memory data and re-render
+            const fresh=readOcc();
+            Object.keys(data).forEach(k=>delete data[k]);
+            Object.assign(data, fresh);
+            const ym2 = (sel && sel.value) ? sel.value : ym;
+            // rebuild date lists after deletion
+            const all2=Object.keys(data).sort();
+            allDates.length=0; all2.forEach(x=>allDates.push(x)); // keep ref
+            renderForMonth(ym2 || (all2[all2.length-1]||""));
+          });
+        });
       }
-    });
+
+      // Chart
+      const ctx=modal.querySelector("#occCanvas").getContext("2d");
+      if(occChart){ occChart.destroy(); occChart=null; }
+      occChart=new Chart(ctx,{
+        type:"line",
+        data:{
+          labels:dates,
+          datasets:[
+            { label:"% Ocupación", data:pctSeries, tension:0.25, borderWidth:2, pointRadius:3 },
+            { label:"Pallets usados", data:palletSeries, tension:0.25, borderWidth:2, pointRadius:3, yAxisID:"y1" }
+          ]
+        },
+        options:{
+          responsive:true,
+          maintainAspectRatio:false,
+          interaction:{ mode:"index", intersect:false },
+          scales:{
+            y:{ title:{ display:true, text:"%" } },
+            y1:{ position:"right", grid:{ drawOnChartArea:false }, title:{ display:true, text:"Pallets" } }
+          },
+          plugins:{ legend:{ display:true } }
+        }
+      });
+    }
+
+    const initial = sel ? sel.value : (months[months.length-1]||"");
+    renderForMonth(initial);
+
+    if(sel){
+      sel.onchange = ()=>renderForMonth(sel.value);
+    }
 
     modal.style.display="flex";
   }
@@ -3640,14 +3715,15 @@ function showInboundDetail(title, monthLabelText, rows){
     toast(`🗑️ Borrado (${d})`);
   }
 
-  // === Export / Import (PC) ===
-  function collectBackup(){
+  // === Guardar / Cargar en PC (sin descargas) ===
+  const KEY_PC_SNAPSHOT = "capacityTools_pcSnapshot_latest_v1";
+
+  function collectSnapshot(){
     const payload = {
       __version: KEY_BACKUP_VERSION,
-      exportedAt: new Date().toISOString(),
+      savedAt: new Date().toISOString(),
       keys: {}
     };
-    // Export everything under capacityTools_*
     for(let i=0;i<localStorage.length;i++){
       const k=localStorage.key(i);
       if(!k) continue;
@@ -3655,47 +3731,32 @@ function showInboundDetail(title, monthLabelText, rows){
         payload.keys[k]=localStorage.getItem(k);
       }
     }
-    // Ensure occ + manual in payload even if naming differs
-    if(payload.keys[KEY_OCC]==null) payload.keys[KEY_OCC]=localStorage.getItem(KEY_OCC);
-    if(payload.keys[KEY_MANUAL]==null) payload.keys[KEY_MANUAL]=localStorage.getItem(KEY_MANUAL);
     return payload;
   }
 
-  function downloadJSON(obj, filename){
-    const blob=new Blob([JSON.stringify(obj,null,2)], {type:"application/json"});
-    const a=document.createElement("a");
-    a.href=URL.createObjectURL(blob);
-    a.download=filename;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 0);
+  function saveToPC(){
+    const payload=collectSnapshot();
+    localStorage.setItem(KEY_PC_SNAPSHOT, JSON.stringify(payload));
+    toast("💾 Guardado en esta PC");
   }
 
-  function exportPC(){
-    const payload=collectBackup();
-    const fname=`capacity_tools_backup_${DATE_FMT()}.json`;
-    downloadJSON(payload, fname);
-    toast("💾 Backup descargado en tu PC");
-  }
-
-  function importPC(file){
-    const reader=new FileReader();
-    reader.onload=()=>{
-      try{
-        const obj=JSON.parse(String(reader.result||"{}"));
-        if(!obj || !obj.keys){ throw new Error("Formato inválido"); }
-        for(const [k,v] of Object.entries(obj.keys)){
-          if(v==null) continue;
-          localStorage.setItem(k, String(v));
-        }
-        toast("📥 Backup cargado. Recargando…");
-        setTimeout(()=>location.reload(), 600);
-      }catch(e){
-        alert("No se pudo importar el backup: "+e.message);
+  function loadFromPC(){
+    const raw=localStorage.getItem(KEY_PC_SNAPSHOT);
+    if(!raw){ alert("No hay un guardado previo en esta PC."); return; }
+    try{
+      const obj=JSON.parse(raw);
+      if(!obj || !obj.keys) throw new Error("Formato inválido");
+      for(const [k,v] of Object.entries(obj.keys)){
+        if(v==null) continue;
+        localStorage.setItem(k, String(v));
       }
-    };
-    reader.readAsText(file);
+      toast("📥 Cargado desde esta PC. Recargando…");
+      setTimeout(()=>location.reload(), 600);
+    }catch(e){
+      alert("No se pudo cargar el guardado: "+e.message);
+    }
   }
+
 
   function wireButtons(){
     // Occupation buttons (from your UI)
@@ -3713,29 +3774,13 @@ function showInboundDetail(title, monthLabelText, rows){
     const btnCloseMonth = document.getElementById("btnCloseMonth");
     const cloudStatus = document.getElementById("cloudStatus");
 
-    // Hidden file input for import
-    let fileInput=document.getElementById("__ct_import_file");
-    if(!fileInput){
-      fileInput=document.createElement("input");
-      fileInput.type="file";
-      fileInput.accept="application/json";
-      fileInput.id="__ct_import_file";
-      fileInput.style.display="none";
-      fileInput.addEventListener("change",(e)=>{
-        const f=e.target.files && e.target.files[0];
-        if(f) importPC(f);
-        e.target.value="";
-      });
-      document.body.appendChild(fileInput);
-    }
-
     if(btnCloudSave){
       btnCloudSave.textContent="💾 Guardar en PC";
-      btnCloudSave.addEventListener("click", exportPC);
+      btnCloudSave.addEventListener("click", saveToPC);
     }
     if(btnCloudLoad){
       btnCloudLoad.textContent="📥 Cargar desde PC";
-      btnCloudLoad.addEventListener("click", ()=>fileInput.click());
+      btnCloudLoad.addEventListener("click", loadFromPC);
     }
     if(btnCloseMonth){
       btnCloseMonth.textContent="📌 Cerrar mes (PC)";
