@@ -756,9 +756,9 @@
 
           <div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;">
             <button class="btn primary" id="btnProcess">Procesar / Actualizar</button>
-            <button class="btn sm" id="btnCloudSave" title="Guarda stock, movimientos y manuales en la nube">☁ Guardar nube</button>
-            <button class="btn sm" id="btnCloudLoad" title="Carga el último estado compartido desde la nube">☁ Cargar nube</button>
-            <span class="sub" id="cloudStatus" style="align-self:center; font-weight:800; color:var(--muted);">Nube: —</span>
+            <button class="btn sm" id="btnCloudSave" title="Guarda stock, movimientos y manuales en la PC">☁ Guardar PC</button>
+            <button class="btn sm" id="btnCloudLoad" title="Carga el último estado compartido desde la PC">☁ Cargar PC</button>
+            <span class="sub" id="cloudStatus" style="align-self:center; font-weight:800; color:var(--muted);">PC: —</span>
             <button class="btn" id="btnGotoLayout">Ir al Layout</button>
           </div>
         </div>
@@ -3452,7 +3452,7 @@ function showInboundDetail(title, monthLabelText, rows){
    - Ocupación diaria: guardar % + pallets usados + breakdown
    - Historial: gráfico lineal
    - Borrar hoy
-   - Reemplaza "nube" por "PC" (export/import JSON)
+   - Reemplaza "PC" por "PC" (export/import JSON)
    ======================= */
 (function(){
   "use strict";
