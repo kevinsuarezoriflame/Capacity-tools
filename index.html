@@ -756,8 +756,8 @@
 
           <div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;">
             <button class="btn primary" id="btnProcess">Procesar / Actualizar</button>
-            <button class="btn sm" id="btnCloudSave" title="Guarda stock, movimientos y manuales en la PC">☁ Guardar PC</button>
-            <button class="btn sm" id="btnCloudLoad" title="Carga el último estado compartido desde la PC">☁ Cargar PC</button>
+            <button class="btn sm" id="btnCloudSave" title="Guarda stock, movimientos y manuales en esta PC">💾 Guardar PC</button>
+            <button class="btn sm" id="btnCloudLoad" title="Carga el último estado guardado en esta PC">📥 Cargar PC</button>
             <span class="sub" id="cloudStatus" style="align-self:center; font-weight:800; color:var(--muted);">PC: —</span>
             <button class="btn" id="btnGotoLayout">Ir al Layout</button>
           </div>
@@ -940,7 +940,7 @@
               <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                 <button class="btn sm" id="btnSaveOccToday" type="button">Guardar ocupación (hoy)</button>
                 <button class="btn ghost sm" id="btnViewOccHistory" type="button">📈 Ocupación</button>
-                <button class="btn danger sm" id="btnDeleteOccToday" type="button" title="Borrar ocupación guardada de hoy">🗑️</button>
+                <button class="btn danger sm" id="btnDeleteOccToday" type="button" title="Eliminar ocupación guardada del día">🗑️</button>
               </div>
             </div>
 
@@ -1086,7 +1086,7 @@
           <div class="chartBox">
             <canvas id="occLine" width="860" height="360" style="width:100%;height:auto;"></canvas>
             <div class="hint" style="margin-top:10px;">
-              Fuente: guardado diario automático (Firestore) • % ocupación + pallets usados del panel.
+              Fuente: guardado diario en esta PC (Local Storage) • % ocupación + pallets usados del panel.
             </div>
           </div>
           <div class="sideBox">
@@ -1177,8 +1177,7 @@
 
   
 
-  // 🔗 Bridge para módulos (Firebase) - permite leer/escribir manualOverrides desde <script>
-  window.__CT_getManualOverrides = () => manualOverrides;
+  // 🔗 Bridge para módulos (Firebase) - permite leer/escribir manualOverrides desde   window.__CT_getManualOverrides = () => manualOverrides;
   window.__CT_setManualOverrides = (arr) => {
     manualOverrides = Array.isArray(arr) ? arr : [];
     try{ saveManual(); }catch(e){}
@@ -1953,13 +1952,12 @@ function parseMoves(text){
   }
 
   function computeIOMetrics(rows, monthKey){
-    let air=0, sea=0, compraLocal=0, armados=0, desarmados=0, outboundUnits=0;
+    let air=0, sea=0, compraLocal=0, armados=0, outboundUnits=0;
     const det = {
       inbound_air: [],
       inbound_sea: [],
       inbound_compra_local: [],
       inbound_armados: [],
-      inbound_desarmados: [],
       outbound_pl: []
     };
 
@@ -1970,12 +1968,7 @@ function parseMoves(text){
       return EXCL_INBOUND_TO.some(k => toL === k || toL.includes(k));
     }
 
-    
-    // ✅ Desarmados: dedupe por fecha/hora (un movimiento puede venir en varias filas)
-    const desarmByTs = new Map(); // key -> qty (tomamos el mayor por timestamp)
-    const desarmRowByTs = new Map(); // key -> row referencia
-
-for(const r of rows){
+    for(const r of rows){
       const fromL = String(r.from||"").toLowerCase();
       const toL = String(r.to||"").toLowerCase();
       const desc = String(r.desc||"").toLowerCase();
@@ -1983,16 +1976,6 @@ for(const r of rows){
       const inbound = fromL.includes("inbound");
       if(inbound){
         if(isExcludedInboundTo(r.to)) continue;
-
-        // Desarmados (Description contiene desarmad)
-        if(desc.includes("desarmad")){
-          const key = r.dt ? String(r.dt.getTime()) : (r.dateRaw||"SIN-FECHA");
-          const prev = desarmByTs.get(key);
-          if(prev==null || r.qty > prev){
-            desarmByTs.set(key, r.qty);
-            desarmRowByTs.set(key, r);
-          }
-        }
 
         if(toL.includes("compra local")){
           compraLocal += r.qty; det.inbound_compra_local.push(r);
@@ -2012,12 +1995,6 @@ for(const r of rows){
       }
     }
 
-    // cerrar desarmados
-    if(desarmByTs.size){
-      for(const [k,v] of desarmByTs.entries()) desarmados += (Number(v)||0);
-      for(const r of desarmRowByTs.values()) det.inbound_desarmados.push(r);
-    }
-
     const importUnits = air + sea;
     const palletsInbound = Math.ceil((importUnits||0) / 1500);
     const boxesInbound   = Math.ceil((importUnits||0) / 30);
@@ -2029,7 +2006,7 @@ for(const r of rows){
     const palletsOutbound = Math.ceil((outboundUnits||0)/1500);
 
     return {
-      air, sea, compraLocal, armados, desarmados,
+      air, sea, compraLocal, armados,
       importUnits, palletsInbound, boxesInbound,
       outboundUnits, palletsOutbound, boxesOutbound,
       taggedUnits,
@@ -2110,7 +2087,6 @@ for(const r of rows){
       { id:"in_sea", label:"🚢 Unidades Importación (Contenedor)", value: m.sea, sub:"From=inbound & no AIR → SEA", detailKey:"inbound_sea" },
       { id:"in_local", label:"🏪 Unidades Compra Local", value: m.compraLocal, sub:"From=inbound & To contiene Compra Local", detailKey:"inbound_compra_local" },
       { id:"in_arm", label:"🧩 Armados", value: m.armados, sub:"From=inbound & To contiene Armados_CW", detailKey:"inbound_armados" },
-      { id:"in_des", label:"🧰 Desarmados", value: m.desarmados, sub:'Description contiene "desarmad" (dedup por fecha/hora)', detailKey:"inbound_desarmados" },
       { id:"in_tag", label:"🏷️ Unidades Etiquetadas (manual)", value: m.taggedUnits, sub:isSnap ? "Snapshot (cerrado)" : "Ingresadas manualmente por mes", detailKey:null },
 
       { id:"bulk_units_in", label:"📦 Bulk units - inbound", value: m.importUnits, sub:"AIR + Contenedor", detailKey:"inbound_import_all" },
@@ -2130,7 +2106,6 @@ for(const r of rows){
       in_sea: "sea",
       in_local: "local",
       in_arm: "arm",
-      in_des: "arm",
       in_tag: "tag",
       bulk_units_in: "bulkIn",
       bulk_pallets_in: "bulkIn",
@@ -3442,394 +3417,290 @@ function showInboundDetail(title, monthLabelText, rows){
       btnToggleStock.textContent = isHidden ? "▸" : "▾";
     });
   }
-</script>
 
+  // =========================
+  // Ocupación diaria (PC only)
+  // =========================
+  const LS_KEY_OCC = "capacityTools_occHistory_v1"; // { "YYYY-MM-DD": { pct:number, palletsUsed:number, productos?:number, empaque?:number } }
 
+  const btnSaveOccToday = document.getElementById("btnSaveOccToday");
+  const btnViewOccHistory = document.getElementById("btnViewOccHistory");
+  const btnDeleteOccToday = document.getElementById("btnDeleteOccToday");
 
-<script>
-/* =======================
-   Local-only (PC) Controls
-   - Ocupación diaria: guardar % + pallets usados + breakdown
-   - Historial: gráfico lineal
-   - Borrar hoy
-   - Reemplaza "PC" por "PC" (export/import JSON)
-   ======================= */
-(function(){
-  "use strict";
+  const modalOcc = document.getElementById("modalOcc");
+  const btnCloseModalOcc = document.getElementById("btnCloseModalOcc");
+  const btnExportOccPng = document.getElementById("btnExportOccPng");
+  const occLine = document.getElementById("occLine");
+  const occRangeLbl = document.getElementById("occRangeLbl");
+  const occLastDate = document.getElementById("occLastDate");
+  const occLastPct = document.getElementById("occLastPct");
+  const occLastPallets = document.getElementById("occLastPallets");
+  const occDays = document.getElementById("occDays");
 
-  const KEY_OCC = "capacityTools_occHistory_v1";
-  const KEY_MANUAL = "capacityTools_ioManual_v1";
-  const KEY_BACKUP_VERSION = "capacityTools_backup_v1";
-  const DATE_FMT = () => {
-    const d=new Date();
-    const y=d.getFullYear();
-    const m=String(d.getMonth()+1).padStart(2,"0");
-    const da=String(d.getDate()).padStart(2,"0");
-    return `${y}-${m}-${da}`;
-  };
+  let __occDataSorted = []; // [{date,pct,palletsUsed,productos,empaque}]
+  let __occSeries = [];     // [{label,value,date}]
 
-  function safeNum(v){
-    const n=parseFloat(String(v||"").replace(/[^0-9.]/g,""));
-    return Number.isFinite(n)? n : null;
+  function fmtISODate(d=new Date()){
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,"0");
+    const day = String(d.getDate()).padStart(2,"0");
+    return `${y}-${m}-${day}`;
   }
 
-  function getText(el){ return el ? String(el.textContent||"").trim() : ""; }
+  function openOccModal(){ if(modalOcc) modalOcc.classList.add("open"); }
+  function closeOccModal(){ if(modalOcc) modalOcc.classList.remove("open"); }
 
-  function findPalletsTable(){
-    // Preferred: tbody id tblPallets (exists in your layout)
-    const tbody = document.getElementById("tblPallets");
-    if(tbody) return tbody.closest("table");
-    // fallback: find a table that has headers "Clasificación" and "Pallets"
-    const tables=[...document.querySelectorAll("table")];
-    return tables.find(t=>{
-      const th=[...t.querySelectorAll("th")].map(x=>getText(x).toLowerCase());
-      return th.includes("clasificación") && th.includes("pallets");
-    }) || null;
+  if(btnCloseModalOcc) btnCloseModalOcc.addEventListener("click", closeOccModal);
+  if(modalOcc) modalOcc.addEventListener("click", (e)=>{ if(e.target===modalOcc) closeOccModal(); });
+
+  function getCurrentOccPct(){
+    const el = document.getElementById("capPct");
+    if(!el) return null;
+    const t = (el.textContent||"").replace("%","").trim().replace(",",".");
+    const v = Number(t);
+    return Number.isFinite(v) ? v : null;
   }
 
-  function getBreakdownFromTable(){
-    const table = findPalletsTable();
-    let productos=null, empaque=null, totalUsados=null;
+  function getCurrentPalletsUsed(){
+    const el = document.getElementById("pUsed");
+    if(!el) return null;
+    let t = (el.textContent||"").trim();
+    t = t.replace(/[^0-9.,-]/g, "");
+    if(t.includes(".") && t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
+    else t = t.replace(/\./g, "");
+    const v = Number(t);
+    return Number.isFinite(v) ? v : null;
+  }
 
-    if(table){
-      // rows in tbody
-      const rows=[...table.querySelectorAll("tbody tr")];
-      for(const r of rows){
-        const tds=[...r.querySelectorAll("td")];
-        if(tds.length<2) continue;
-        const name=getText(tds[0]).toLowerCase();
-        const val=safeNum(getText(tds[1]));
-        if(name.includes("producto")) productos=val;
-        if(name.includes("empaque")) empaque=val;
-      }
-      // total used: prefer element with id pUsed; else tfoot last cell
-      const pUsedEl=document.getElementById("pUsed");
-      totalUsados = safeNum(getText(pUsedEl));
-      if(totalUsados==null){
-        const tf=[...table.querySelectorAll("tfoot td")];
-        if(tf.length>=2) totalUsados=safeNum(getText(tf[tf.length-1]));
-      }
+  function getPalletsBreakdown(){
+    const out = { productos:null, empaque:null };
+    const tb = document.getElementById("tblPallets");
+    if(!tb) return out;
+    const rows = Array.from(tb.querySelectorAll("tr"));
+    for(const tr of rows){
+      const tds = tr.querySelectorAll("td");
+      if(tds.length<2) continue;
+      const k = (tds[0].textContent||"").trim().toLowerCase();
+      const vtxt = (tds[1].textContent||"").trim().replace(/[^0-9.,-]/g,"");
+      const v = Number(vtxt.replace(/\./g,"").replace(",","."));
+      if(!Number.isFinite(v)) continue;
+      if(k==="productos") out.productos = v;
+      if(k.includes("empaque")) out.empaque = v;
     }
-    return { productos, empaque, totalUsados };
+    return out;
   }
 
-  function getTodayMetrics(){
-    // % bubble
-    const pctEl = document.getElementById("capPct") || document.querySelector("[data-cap-pct]");
-    const pct = safeNum(getText(pctEl));
-
-    const { productos, empaque, totalUsados } = getBreakdownFromTable();
-
-    // Must have at least pct + totalUsados
-    if(pct==null || totalUsados==null) return null;
-    return { date: DATE_FMT(), pct, totalUsados, productos, empaque };
+  function loadOccMap(){
+    try{
+      const raw = localStorage.getItem(LS_KEY_OCC);
+      const obj = raw ? JSON.parse(raw) : {};
+      return (obj && typeof obj === "object") ? obj : {};
+    }catch(e){ return {}; }
   }
 
-  function readOcc(){
-    try{ return JSON.parse(localStorage.getItem(KEY_OCC) || "{}"); }
-    catch(e){ return {}; }
-  }
-  function writeOcc(obj){
-    localStorage.setItem(KEY_OCC, JSON.stringify(obj));
+  function saveOccMap(map){
+    try{ localStorage.setItem(LS_KEY_OCC, JSON.stringify(map||{})); }catch(e){}
   }
 
-  function toast(msg){
-    // simple non-invasive toast
-    let t=document.getElementById("__ct_toast");
-    if(!t){
-      t=document.createElement("div");
-      t.id="__ct_toast";
-      t.style.cssText="position:fixed;right:16px;bottom:16px;z-index:99999;background:#0f172a;color:#fff;padding:10px 12px;border-radius:12px;box-shadow:0 10px 24px rgba(15,23,42,.20);font:600 13px system-ui;max-width:360px;opacity:0;transform:translateY(6px);transition:.18s;";
-      document.body.appendChild(t);
+  function buildOccSeries(){
+    const map = loadOccMap();
+    const keys = Object.keys(map).sort(); // YYYY-MM-DD lexicographic works
+    __occDataSorted = keys.map(k=>{
+      const r = map[k] || {};
+      return {
+        date: k,
+        pct: Number(r.pct),
+        palletsUsed: Number(r.palletsUsed),
+        productos: (r.productos==null? null : Number(r.productos)),
+        empaque: (r.empaque==null? null : Number(r.empaque)),
+      };
+    }).filter(r=>Number.isFinite(r.pct));
+
+    __occSeries = __occDataSorted.map(r=>{
+      const mm = r.date.slice(5,7);
+      const dd = r.date.slice(8,10);
+      const months = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+      const lbl = (dd && mm) ? `${dd}-${months[(Number(mm)||1)-1]}` : r.date;
+      return { label: lbl, value: r.pct, date: r.date };
+    });
+
+    if(occDays) occDays.textContent = String(__occSeries.length);
+
+    if(__occDataSorted.length){
+      const first = __occDataSorted[0].date;
+      const last = __occDataSorted[__occDataSorted.length-1].date;
+      if(occRangeLbl) occRangeLbl.textContent = `${first} → ${last}`;
+    }else{
+      if(occRangeLbl) occRangeLbl.textContent = "—";
     }
-    t.textContent=msg;
-    t.style.opacity="1";
-    t.style.transform="translateY(0)";
-    clearTimeout(window.__ct_toast_timer);
-    window.__ct_toast_timer=setTimeout(()=>{ t.style.opacity="0"; t.style.transform="translateY(6px)"; }, 2200);
   }
 
-  async function ensureChartJS(){
-    if(window.Chart) return true;
-    return new Promise((resolve)=>{
-      const s=document.createElement("script");
-      s.src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js";
-      s.onload=()=>resolve(true);
-      s.onerror=()=>resolve(false);
-      document.head.appendChild(s);
+  function setOccDetailByIndex(idx){
+    if(!__occDataSorted.length){
+      if(occLastDate) occLastDate.textContent = "—";
+      if(occLastPct) occLastPct.textContent = "—";
+      if(occLastPallets) occLastPallets.textContent = "—";
+      return;
+    }
+    const i = Math.max(0, Math.min(idx, __occDataSorted.length-1));
+    const r = __occDataSorted[i];
+    if(occLastDate) occLastDate.textContent = r.date || "—";
+    if(occLastPct) occLastPct.textContent = (Number(r.pct)).toFixed(2) + "%";
+    if(occLastPallets) occLastPallets.textContent = Number.isFinite(r.palletsUsed) ? String(Math.round(r.palletsUsed)) : "—";
+  }
+
+  function renderOccHistoryLocal(){
+    if(!occLine) return;
+    buildOccSeries();
+    drawLineChartPct(occLine, __occSeries);
+    // default: select last day
+    setOccDetailByIndex(__occDataSorted.length-1);
+  }
+
+  function occPickIndexFromCanvasEvent(evt){
+    if(!occLine || !__occSeries.length) return null;
+    const rect = occLine.getBoundingClientRect();
+    const scaleX = occLine.width / rect.width;
+    const x = (evt.clientX - rect.left) * scaleX;
+
+    const pl=60, pr=18;
+    const x0 = pl, x1 = occLine.width - pr;
+    if(__occSeries.length===1) return 0;
+    const xStep = (x1-x0)/(__occSeries.length-1);
+    let idx = Math.round((x - x0) / xStep);
+    idx = Math.max(0, Math.min(idx, __occSeries.length-1));
+    return idx;
+  }
+
+  if(occLine){
+    occLine.addEventListener("click", (evt)=>{
+      const idx = occPickIndexFromCanvasEvent(evt);
+      if(idx==null) return;
+      setOccDetailByIndex(idx);
     });
   }
 
-  function buildOccModalIfNeeded(){
-    let modal=document.getElementById("modalOcc");
-    if(modal) return modal;
+  if(btnSaveOccToday){
+    btnSaveOccToday.addEventListener("click", ()=>{
+      const pct = getCurrentOccPct();
+      if(pct===null){ alert("No se pudo leer el % de ocupación actual."); return; }
 
-    modal=document.createElement("div");
-    modal.id="modalOcc";
-    modal.style.cssText="position:fixed;inset:0;background:rgba(15,23,42,.55);display:none;align-items:center;justify-content:center;z-index:9999;padding:16px;";
-    modal.innerHTML=`
-      <div style="width:min(920px, 96vw);background:#fff;border-radius:16px;box-shadow:0 18px 45px rgba(15,23,42,.25);overflow:hidden;">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #e2e8f0;">
-          <div style="font:800 14px system-ui;color:#0f172a;">📈 Ocupación guardada (PC)</div>
-          <button id="btnCloseOcc" type="button" class="btn sm" style="background:#f1f5f9;color:#0f172a;">Cerrar</button>
-        </div>
-        <div style="padding:14px;">
-          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
-            <div style="font:700 12px system-ui;color:#334155;">Último registro:</div>
-            <div id="occLast" style="font:700 12px system-ui;color:#0f172a;">—</div>
-          </div>
-          <canvas id="occCanvas" height="110"></canvas>
-          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px;">
-            <div style="font:700 12px system-ui;color:#334155;">Mes:</div>
-            <select id="occMonth" style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:10px;font:700 12px system-ui;"></select>
-            <div style="font:600 12px system-ui;color:#64748b;">Tip: guarda día a día y filtra por mes.</div>
-          </div>
-          <div id="occList" style="margin-top:10px;max-height:160px;overflow:auto;border:1px solid #e2e8f0;border-radius:12px;"></div>
+      const palletsUsed = getCurrentPalletsUsed();
+      if(palletsUsed===null){ alert("No se pudo leer el total de pallets usados."); return; }
 
-          <div style="margin-top:10px;font:600 12px system-ui;color:#64748b;">
-            Se guarda: <b>% ocupación</b> + <b>Total usados</b> (+ Productos / M. Empaque si aplica). Todo queda en esta PC.
-          </div>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(modal);
-    modal.addEventListener("click",(e)=>{ if(e.target===modal) closeOccModal(); });
-    modal.querySelector("#btnCloseOcc").addEventListener("click", closeOccModal);
-    return modal;
-  }
+      const { productos, empaque } = getPalletsBreakdown();
+      const d = fmtISODate(new Date());
 
-  function closeOccModal(){
-    const m=document.getElementById("modalOcc");
-    if(m) m.style.display="none";
-  }
-
-  let occChart=null;
-
-  async async function openOccModal(){
-    const ok=await ensureChartJS();
-    if(!ok){ alert("No se pudo cargar Chart.js. Revisa conexión."); return; }
-
-    const modal=buildOccModalIfNeeded();
-    const data=readOcc();
-
-    const allDates=Object.keys(data).sort();
-    const monthSet=new Set(allDates.map(d=>d.slice(0,7)));
-    const months=[...monthSet].sort();
-    const sel=modal.querySelector("#occMonth");
-    const list=modal.querySelector("#occList");
-
-    // Build month options (keep selection if already set)
-    const prev = sel && sel.value ? sel.value : null;
-    if(sel){
-      sel.innerHTML = months.map(m=>`<option value="${m}">${m}</option>`).join("");
-      const currentYM = (()=>{
-        const now=new Date(); return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
-      })();
-      sel.value = prev && months.includes(prev) ? prev : (months.includes(currentYM) ? currentYM : (months[months.length-1]||""));
-    }
-
-    function renderForMonth(ym){
-      const dates = allDates.filter(d=>d.startsWith(ym));
-      const pctSeries = dates.map(d=>data[d].pct);
-      const palletSeries = dates.map(d=>data[d].totalUsados);
-
-      const last=dates.length? data[dates[dates.length-1]] : null;
-      const lastLbl = last ? `${dates[dates.length-1]} · ${last.pct.toFixed(2)}% · ${last.totalUsados} pallets` : "—";
-      modal.querySelector("#occLast").textContent=lastLbl;
-
-      // Build list
-      if(list){
-        if(!dates.length){
-          list.innerHTML = `<div style="padding:10px 12px;font:700 12px system-ui;color:#64748b;">No hay registros en ${ym}.</div>`;
-        }else{
-          const rows = dates.map(d=>{
-            const r=data[d];
-            return `
-              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-bottom:1px solid #e2e8f0;">
-                <div style="font:800 12px system-ui;color:#0f172a;">${d}</div>
-                <div style="display:flex;gap:10px;align-items:center;">
-                  <div style="font:700 12px system-ui;color:#334155;">${r.pct.toFixed(2)}%</div>
-                  <div style="font:700 12px system-ui;color:#334155;">${r.totalUsados} pallets</div>
-                  <button type="button" data-occ-del="${d}" title="Borrar día" style="border:1px solid #fecaca;background:#fff5f5;color:#991b1b;border-radius:10px;padding:6px 8px;cursor:pointer;font:800 12px system-ui;">🗑️</button>
-                </div>
-              </div>`;
-          }).join("");
-          list.innerHTML = rows;
-        }
-        // wire delete buttons
-        list.querySelectorAll("[data-occ-del]").forEach(btn=>{
-          btn.addEventListener("click", ()=>{
-            const day=btn.getAttribute("data-occ-del");
-            if(!day || !data[day]) return;
-            if(!confirm(`¿Borrar la ocupación guardada de ${day}?`)) return;
-            const store=readOcc();
-            delete store[day];
-            writeOcc(store);
-            toast(`🗑️ Borrado (${day})`);
-            // refresh in-memory data and re-render
-            const fresh=readOcc();
-            Object.keys(data).forEach(k=>delete data[k]);
-            Object.assign(data, fresh);
-            const ym2 = (sel && sel.value) ? sel.value : ym;
-            // rebuild date lists after deletion
-            const all2=Object.keys(data).sort();
-            allDates.length=0; all2.forEach(x=>allDates.push(x)); // keep ref
-            renderForMonth(ym2 || (all2[all2.length-1]||""));
-          });
-        });
+      const map = loadOccMap();
+      if(map[d]){
+        const prevPct = Number(map[d].pct);
+        const prevPal = Number(map[d].palletsUsed);
+        const ok = confirm(`Ya existe ocupación guardada para HOY (${d}).\nActual: ${Number.isFinite(prevPct)?prevPct.toFixed(2):"—"}% • Pallets: ${Number.isFinite(prevPal)?Math.round(prevPal):"—"}\n\n¿Deseas REEMPLAZARLA?`);
+        if(!ok) return;
       }
 
-      // Chart
-      const ctx=modal.querySelector("#occCanvas").getContext("2d");
-      if(occChart){ occChart.destroy(); occChart=null; }
-      occChart=new Chart(ctx,{
-        type:"line",
-        data:{
-          labels:dates,
-          datasets:[
-            { label:"% Ocupación", data:pctSeries, tension:0.25, borderWidth:2, pointRadius:3 },
-            { label:"Pallets usados", data:palletSeries, tension:0.25, borderWidth:2, pointRadius:3, yAxisID:"y1" }
-          ]
-        },
-        options:{
-          responsive:true,
-          maintainAspectRatio:false,
-          interaction:{ mode:"index", intersect:false },
-          scales:{
-            y:{ title:{ display:true, text:"%" } },
-            y1:{ position:"right", grid:{ drawOnChartArea:false }, title:{ display:true, text:"Pallets" } }
-          },
-          plugins:{ legend:{ display:true } }
-        }
-      });
-    }
+      map[d] = { pct, palletsUsed, productos, empaque };
+      saveOccMap(map);
 
-    const initial = sel ? sel.value : (months[months.length-1]||"");
-    renderForMonth(initial);
-
-    if(sel){
-      sel.onchange = ()=>renderForMonth(sel.value);
-    }
-
-    modal.style.display="flex";
-  }
-
-  function saveOccToday(){
-    const m=getTodayMetrics();
-    if(!m){
-      alert("⚠️ No puedo guardar: asegúrate de que ya se muestre el % de ocupación y el Total usados.");
-      return;
-    }
-    const store=readOcc();
-    store[m.date]={ pct:m.pct, totalUsados:m.totalUsados, productos:m.productos, empaque:m.empaque, ts:Date.now() };
-    writeOcc(store);
-    toast(`✅ Guardado (${m.date}): ${m.pct.toFixed(2)}% · ${m.totalUsados} pallets`);
-  }
-
-  function deleteOccToday(){
-    const d=DATE_FMT();
-    const store=readOcc();
-    if(!store[d]){
-      alert("No existe un registro guardado para hoy.");
-      return;
-    }
-    if(!confirm(`¿Borrar la ocupación guardada de hoy (${d})?`)) return;
-    delete store[d];
-    writeOcc(store);
-    toast(`🗑️ Borrado (${d})`);
-  }
-
-  // === Guardar / Cargar en PC (sin descargas) ===
-  const KEY_PC_SNAPSHOT = "capacityTools_pcSnapshot_latest_v1";
-
-  function collectSnapshot(){
-    const payload = {
-      __version: KEY_BACKUP_VERSION,
-      savedAt: new Date().toISOString(),
-      keys: {}
-    };
-    for(let i=0;i<localStorage.length;i++){
-      const k=localStorage.key(i);
-      if(!k) continue;
-      if(k.startsWith("capacityTools_")){
-        payload.keys[k]=localStorage.getItem(k);
+      alert(`✅ Ocupación guardada (${d})\n${pct.toFixed(2)}% • Pallets usados: ${Math.round(palletsUsed)}`);
+      // refresca modal si está abierto
+      if(modalOcc && modalOcc.classList.contains("open")){
+        try{ renderOccHistoryLocal(); }catch(e){}
       }
-    }
-    return payload;
+    });
   }
 
-  function saveToPC(){
-    const payload=collectSnapshot();
-    localStorage.setItem(KEY_PC_SNAPSHOT, JSON.stringify(payload));
-    toast("💾 Guardado en esta PC");
-  }
-
-  function loadFromPC(){
-    const raw=localStorage.getItem(KEY_PC_SNAPSHOT);
-    if(!raw){ alert("No hay un guardado previo en esta PC."); return; }
-    try{
-      const obj=JSON.parse(raw);
-      if(!obj || !obj.keys) throw new Error("Formato inválido");
-      for(const [k,v] of Object.entries(obj.keys)){
-        if(v==null) continue;
-        localStorage.setItem(k, String(v));
+  if(btnDeleteOccToday){
+    btnDeleteOccToday.addEventListener("click", ()=>{
+      const d = fmtISODate(new Date());
+      const map = loadOccMap();
+      if(!map[d]){
+        alert(`No hay ocupación guardada para hoy (${d}).`);
+        return;
       }
-      toast("📥 Cargado desde esta PC. Recargando…");
-      setTimeout(()=>location.reload(), 600);
-    }catch(e){
-      alert("No se pudo cargar el guardado: "+e.message);
-    }
+      const ok = confirm(`¿Eliminar la ocupación guardada de HOY (${d})?\nEsta acción no se puede deshacer.`);
+      if(!ok) return;
+      delete map[d];
+      saveOccMap(map);
+      alert(`🗑️ Ocupación eliminada (${d}).`);
+      if(modalOcc && modalOcc.classList.contains("open")){
+        try{ renderOccHistoryLocal(); }catch(e){}
+      }
+    });
   }
 
-
-  function wireButtons(){
-    // Occupation buttons (from your UI)
-    const btnSave = document.getElementById("btnSaveOccToday");
-    const btnView = document.getElementById("btnViewOccHistory");
-    const btnDel  = document.getElementById("btnDeleteOccToday");
-
-    if(btnSave) btnSave.addEventListener("click", saveOccToday);
-    if(btnView) btnView.addEventListener("click", openOccModal);
-    if(btnDel)  btnDel.addEventListener("click", deleteOccToday);
-
-    // Replace cloud buttons to PC backup (if they exist)
-    const btnCloudSave = document.getElementById("btnCloudSave");
-    const btnCloudLoad = document.getElementById("btnCloudLoad");
-    const btnCloseMonth = document.getElementById("btnCloseMonth");
-    const cloudStatus = document.getElementById("cloudStatus");
-
-    if(btnCloudSave){
-      btnCloudSave.textContent="💾 Guardar en PC";
-      btnCloudSave.addEventListener("click", saveToPC);
-    }
-    if(btnCloudLoad){
-      btnCloudLoad.textContent="📥 Cargar desde PC";
-      btnCloudLoad.addEventListener("click", loadFromPC);
-    }
-    if(btnCloseMonth){
-      btnCloseMonth.textContent="📌 Cerrar mes (PC)";
-      btnCloseMonth.addEventListener("click", ()=>{
-        // Snapshot: store backup under a month key, then keep working
-        const now=new Date();
-        const ym=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
-        const key=`capacityTools_monthClose_${ym}`;
-        const payload=collectBackup();
-        localStorage.setItem(key, JSON.stringify(payload));
-        toast(`📌 Mes ${ym} guardado en esta PC`);
-      });
-    }
-    if(cloudStatus){
-      cloudStatus.textContent="Modo PC (Local Storage)";
-    }
+  if(btnViewOccHistory){
+    btnViewOccHistory.addEventListener("click", ()=>{
+      openOccModal();
+      try{ renderOccHistoryLocal(); }catch(err){ console.error(err); alert("❌ No se pudo cargar el histórico de ocupación (PC)."); }
+    });
   }
 
-  // Make sure wiring happens after all scripts created the DOM
-  if(document.readyState==="loading"){
-    document.addEventListener("DOMContentLoaded", wireButtons);
-  }else{
-    wireButtons();
+  if(btnExportOccPng && occLine){
+    btnExportOccPng.addEventListener("click", ()=>{
+      try{
+        const a = document.createElement("a");
+        a.download = "ocupacion_diaria.png";
+        a.href = occLine.toDataURL("image/png");
+        a.click();
+      }catch(e){
+        alert("No se pudo exportar el gráfico.");
+      }
+    });
   }
-})();
+
+  // =========================
+  // Botones "Guardar PC / Cargar PC" (antes nube)
+  // =========================
+  const btnCloudSave = document.getElementById("btnCloudSave");
+  const btnCloudLoad = document.getElementById("btnCloudLoad");
+  const cloudStatus = document.getElementById("cloudStatus");
+
+  function setPcStatus(msg){
+    if(!cloudStatus) return;
+    cloudStatus.textContent = msg || "—";
+  }
+
+  if(btnCloudSave){
+    btnCloudSave.addEventListener("click", ()=>{
+      try{
+        const s = document.getElementById("txtStock");
+        const m = document.getElementById("txtMoves");
+        if(s) localStorage.setItem(LS_KEY_STOCK, s.value || "");
+        if(m) localStorage.setItem(LS_KEY_MOVES, m.value || "");
+        try{ saveManual(); }catch(e){}
+        try{ saveIOM(); }catch(e){}
+        setPcStatus("Guardado en PC ✓");
+        alert("✅ Guardado en esta PC (stock, movimientos y manuales).");
+      }catch(e){
+        console.error(e);
+        alert("❌ No se pudo guardar en esta PC.");
+      }
+    });
+  }
+
+  if(btnCloudLoad){
+    btnCloudLoad.addEventListener("click", ()=>{
+      try{
+        const s = document.getElementById("txtStock");
+        const m = document.getElementById("txtMoves");
+        if(s) s.value = localStorage.getItem(LS_KEY_STOCK) || "";
+        if(m) m.value = localStorage.getItem(LS_KEY_MOVES) || "";
+        // recarga manuales en memoria
+        try{ manualOverrides = loadManual(); renderManualTable(); }catch(e){}
+        try{ ioManual = loadIOM(); renderIOMTable(); }catch(e){}
+        // recalcula paneles
+        const btnProcess = document.getElementById("btnProcess");
+        if(btnProcess) btnProcess.click();
+        setPcStatus("Cargado desde PC ✓");
+        alert("✅ Cargado desde esta PC.");
+      }catch(e){
+        console.error(e);
+        alert("❌ No se pudo cargar desde esta PC.");
+      }
+    });
+  }
+
 </script>
 
 </body>
