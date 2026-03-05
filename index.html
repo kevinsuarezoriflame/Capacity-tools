@@ -3581,7 +3581,7 @@ function showInboundDetail(title, monthLabelText, rows){
 
   let occChart=null;
 
-  async function openOccModal(){
+  async async function openOccModal(){
     const ok=await ensureChartJS();
     if(!ok){ alert("No se pudo cargar Chart.js. Revisa conexión."); return; }
 
