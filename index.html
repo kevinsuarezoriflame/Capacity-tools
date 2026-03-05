@@ -1953,12 +1953,13 @@ function parseMoves(text){
   }
 
   function computeIOMetrics(rows, monthKey){
-    let air=0, sea=0, compraLocal=0, armados=0, outboundUnits=0;
+    let air=0, sea=0, compraLocal=0, armados=0, desarmados=0, outboundUnits=0;
     const det = {
       inbound_air: [],
       inbound_sea: [],
       inbound_compra_local: [],
       inbound_armados: [],
+      inbound_desarmados: [],
       outbound_pl: []
     };
 
@@ -1969,7 +1970,12 @@ function parseMoves(text){
       return EXCL_INBOUND_TO.some(k => toL === k || toL.includes(k));
     }
 
-    for(const r of rows){
+    
+    // ✅ Desarmados: dedupe por fecha/hora (un movimiento puede venir en varias filas)
+    const desarmByTs = new Map(); // key -> qty (tomamos el mayor por timestamp)
+    const desarmRowByTs = new Map(); // key -> row referencia
+
+for(const r of rows){
       const fromL = String(r.from||"").toLowerCase();
       const toL = String(r.to||"").toLowerCase();
       const desc = String(r.desc||"").toLowerCase();
@@ -1977,6 +1983,16 @@ function parseMoves(text){
       const inbound = fromL.includes("inbound");
       if(inbound){
         if(isExcludedInboundTo(r.to)) continue;
+
+        // Desarmados (Description contiene desarmad)
+        if(desc.includes("desarmad")){
+          const key = r.dt ? String(r.dt.getTime()) : (r.dateRaw||"SIN-FECHA");
+          const prev = desarmByTs.get(key);
+          if(prev==null || r.qty > prev){
+            desarmByTs.set(key, r.qty);
+            desarmRowByTs.set(key, r);
+          }
+        }
 
         if(toL.includes("compra local")){
           compraLocal += r.qty; det.inbound_compra_local.push(r);
@@ -1996,6 +2012,12 @@ function parseMoves(text){
       }
     }
 
+    // cerrar desarmados
+    if(desarmByTs.size){
+      for(const [k,v] of desarmByTs.entries()) desarmados += (Number(v)||0);
+      for(const r of desarmRowByTs.values()) det.inbound_desarmados.push(r);
+    }
+
     const importUnits = air + sea;
     const palletsInbound = Math.ceil((importUnits||0) / 1500);
     const boxesInbound   = Math.ceil((importUnits||0) / 30);
@@ -2007,7 +2029,7 @@ function parseMoves(text){
     const palletsOutbound = Math.ceil((outboundUnits||0)/1500);
 
     return {
-      air, sea, compraLocal, armados,
+      air, sea, compraLocal, armados, desarmados,
       importUnits, palletsInbound, boxesInbound,
       outboundUnits, palletsOutbound, boxesOutbound,
       taggedUnits,
@@ -2088,6 +2110,7 @@ function parseMoves(text){
       { id:"in_sea", label:"🚢 Unidades Importación (Contenedor)", value: m.sea, sub:"From=inbound & no AIR → SEA", detailKey:"inbound_sea" },
       { id:"in_local", label:"🏪 Unidades Compra Local", value: m.compraLocal, sub:"From=inbound & To contiene Compra Local", detailKey:"inbound_compra_local" },
       { id:"in_arm", label:"🧩 Armados", value: m.armados, sub:"From=inbound & To contiene Armados_CW", detailKey:"inbound_armados" },
+      { id:"in_des", label:"🧰 Desarmados", value: m.desarmados, sub:'Description contiene "desarmad" (dedup por fecha/hora)', detailKey:"inbound_desarmados" },
       { id:"in_tag", label:"🏷️ Unidades Etiquetadas (manual)", value: m.taggedUnits, sub:isSnap ? "Snapshot (cerrado)" : "Ingresadas manualmente por mes", detailKey:null },
 
       { id:"bulk_units_in", label:"📦 Bulk units - inbound", value: m.importUnits, sub:"AIR + Contenedor", detailKey:"inbound_import_all" },
@@ -2107,6 +2130,7 @@ function parseMoves(text){
       in_sea: "sea",
       in_local: "local",
       in_arm: "arm",
+      in_des: "arm",
       in_tag: "tag",
       bulk_units_in: "bulkIn",
       bulk_pallets_in: "bulkIn",
