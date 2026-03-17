@@ -3847,126 +3847,99 @@ function showInboundDetail(title, monthLabelText, rows){
     return { header, rows };
   }
 
-  function buildTransitReplacement(){
-    const parsed = parseStockRowsForTransitFromText();
-    const allRows = parsed.rows || [];
+function buildTransitReplacement(){
 
-    if(!allRows.length){
-      alert("⚠️ No hay data en 'Pegado de stock'.");
-      return null;
-    }
+  const parsed = parseStockRowsForTransitFromText();
+  const allRows = parsed.rows || [];
 
-    const bulkRows = allRows.filter(r => isBulkSourceLoc(r.ubicacion));
-    const nonBulkRows = allRows.filter(r => !isBulkSourceLoc(r.ubicacion));
-
-    const transNeed = Number(state?.transitory?.need || 0);
-
-    if(!bulkRows.length){
-      alert("⚠️ No encontré filas BULK_CW en el stock pegado.");
-      return null;
-    }
-    if(!transNeed || transNeed <= 0){
-      alert("⚠️ El KPI Transitorio no tiene valor válido todavía. Primero da click en 'Procesar / Actualizar'.");
-      return null;
-    }
-
-    const totalUnits = bulkRows.reduce((a,b)=> a + (Number(b.qty)||0), 0);
-    const targetPerLoc = Math.round(totalUnits / transNeed);
-
-    if(trNeed) trNeed.textContent = fmtInt(transNeed);
-    if(trUnits) trUnits.textContent = fmtInt(totalUnits);
-    if(trTarget) trTarget.textContent = fmtInt(targetPerLoc);
-
-    const cycleBase = bulkRows.map(r => ({
-      bodega: r.bodega,
-      variante: r.variante,
-      zona: r.zona,
-      caja: r.caja
-    }));
-
-    let cycleIdx = 0;
-    function nextMeta(){
-      const item = cycleBase[cycleIdx % cycleBase.length];
-      cycleIdx++;
-      return item;
-    }
-
-    const sourceQueue = bulkRows.map(r => ({
-      bodega: r.bodega,
-      variante: r.variante,
-      zona: r.zona,
-      caja: r.caja,
-      qty: Number(r.qty)||0
-    })).filter(r => r.qty > 0);
-
-    const newRows = [];
-    let queueIdx = 0;
-
-    for(let locNum = 1; locNum <= transNeed; locNum++){
-      const newLoc = `Bulk_CW1.${locNum}`;
-      let remainingTarget = (locNum === transNeed)
-        ? sourceQueue.slice(queueIdx).reduce((a,b)=> a + (Number(b.qty)||0), 0)
-        : targetPerLoc;
-
-      if(remainingTarget <= 0) break;
-
-      while(remainingTarget > 0 && queueIdx < sourceQueue.length){
-        const src = sourceQueue[queueIdx];
-
-        if((Number(src.qty)||0) <= 0){
-          queueIdx++;
-          continue;
-        }
-
-        const take = Math.min(remainingTarget, src.qty);
-
-        const meta = src.variante ? {
-          bodega: src.bodega,
-          variante: src.variante,
-          zona: src.zona,
-          caja: src.caja
-        } : nextMeta();
-
-        newRows.push({
-          bodega: meta.bodega,
-          variante: meta.variante,
-          zona: "Bulk",
-          ubicacion: newLoc,
-          caja: meta.caja,
-          qty: take
-        });
-
-        src.qty -= take;
-        remainingTarget -= take;
-
-        if(src.qty <= 0){
-          queueIdx++;
-        }
-      }
-    }
-
-    const finalRows = [...nonBulkRows, ...newRows];
-
-    let out = "Bodega\tVariante\tZona\tUbicación\tCaja\tPhysical Quantity\n";
-    out += finalRows.map(r =>
-      [
-        r.bodega ?? "",
-        r.variante ?? "",
-        r.zona ?? "",
-        r.ubicacion ?? "",
-        r.caja ?? "",
-        (Number(r.qty)||0)
-      ].join("\t")
-    ).join("\n");
-
-    return {
-      text: out,
-      totalUnits,
-      transNeed,
-      targetPerLoc,
-      createdRows: newRows.length
-    };
+  if(!allRows.length){
+    alert("⚠️ No hay data en panel 1");
+    return null;
   }
+
+  // 1. FILTRAR BULK
+  const bulkRows = allRows.filter(r => isBulkSourceLoc(r.ubicacion));
+
+  if(!bulkRows.length){
+    alert("⚠️ No hay filas BULK");
+    return null;
+  }
+
+  // 2. KPI
+  const transNeed = Number(state?.transitory?.need || 0);
+
+  if(!transNeed){
+    alert("⚠️ KPI Transitorio vacío");
+    return null;
+  }
+
+  // 3. TOTAL
+  const totalUnits = bulkRows.reduce((a,b)=>a+(Number(b.qty)||0),0);
+
+  const base = Math.floor(totalUnits / transNeed);
+  const saldo = totalUnits - (base * (transNeed-1));
+
+  // 4. CODIGOS UNICOS
+  const mapa = {};
+  const lista = [];
+
+  bulkRows.forEach(r=>{
+    if(!mapa[r.variante]){
+      mapa[r.variante] = {
+        bodega: r.bodega,
+        variante: r.variante,
+        zona: r.zona,
+        caja: r.caja
+      };
+      lista.push(r.variante);
+    }
+  });
+
+  // 5. GENERAR RESULTADO
+  const newRows = [];
+
+  for(let i=0;i<transNeed;i++){
+
+    const cod = lista[i % lista.length];
+    const baseData = mapa[cod];
+
+    const qty = (i === transNeed-1) ? saldo : base;
+
+    newRows.push({
+      bodega: baseData.bodega,
+      variante: baseData.variante,
+      zona: "Bulk",
+      ubicacion: `Bulk_CW1.${i+1}`,
+      caja: baseData.caja,
+      qty: qty
+    });
+  }
+
+  // 6. MANTENER NO BULK
+  const nonBulk = allRows.filter(r => !isBulkSourceLoc(r.ubicacion));
+
+  const finalRows = [...nonBulk, ...newRows];
+
+  let out = "Bodega\tVariante\tZona\tUbicación\tCaja\tPhysical Quantity\n";
+
+  out += finalRows.map(r =>
+    [
+      r.bodega,
+      r.variante,
+      r.zona,
+      r.ubicacion,
+      r.caja,
+      r.qty
+    ].join("\t")
+  ).join("\n");
+
+  return {
+    text: out,
+    totalUnits,
+    transNeed,
+    base
+  };
+}
 
   function refreshTransitPanelMini(){
     const totalBulkUnits = (stockRowsParsed || []).reduce((acc, r)=>{
