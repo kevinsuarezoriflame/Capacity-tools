@@ -657,7 +657,6 @@
       <button class="btn" id="btnBgClear">Quitar foto</button>
       <!-- ✅ ahora es Reset LIGHT -->
       <button class="btn danger" id="btnReset">Reset total (light)</button>
-    </div>
   </div>
 
   <div class="container">
@@ -824,7 +823,7 @@
         </div>
       </div>
     </div>
-     <div class="card" id="panelTransitorio">
+     <div class="card">
         <div class="card-header">
           <div>
             <h3>🟪 Generador de transitorias desde KPI</h3>
@@ -3959,7 +3958,7 @@ function buildTransitReplacement(){
       const built = buildTransitReplacement();
       if(!built) return;
       if(txtTransitResult) txtTransitResult.value = built.text;
-      alert(`✅ Transitorias generadas.\nUbicaciones: ${built.transNeed}\nUnidades BULK: ${fmtInt(built.totalUnits)}\nObjetivo por ubicación: ${fmtInt(built.targetPerLoc)}`);
+      alert(`✅ Transitorias generadas.\nUbicaciones: ${built.transNeed}\nUnidades BULK: ${fmtInt(built.totalUnits)}\nObjetivo por ubicación: ${fmtInt(built.base)}`);
     });
   }
 
