@@ -824,7 +824,57 @@
         </div>
       </div>
     </div>
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h3>🟪 Generador de transitorias desde KPI</h3>
+            <p>
+              Toma la data pegada en <b>📥 1) Pega tu reporte de stock</b>, usa el valor del KPI
+              <b>Transitorio (equiv. ubicaciones)</b> y reparte las filas BULK originales una por una
+              en nuevas ubicaciones <b>Bulk_CW1.1, Bulk_CW1.2, ...</b>
+            </p>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="row">
+            <div>
+              <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));">
+                <div class="kpi">
+                  <div class="label">Ubicaciones transitorias</div>
+                  <div class="value" id="trNeed">—</div>
+                  <div class="sub">Tomado desde KPI Transitorio</div>
+                </div>
+                <div class="kpi">
+                  <div class="label">Unidades BULK detectadas</div>
+                  <div class="value" id="trUnits">—</div>
+                  <div class="sub">Solo filas Bulk_CW*</div>
+                </div>
+                <div class="kpi">
+                  <div class="label">Objetivo por ubicación</div>
+                  <div class="value" id="trTarget">—</div>
+                  <div class="sub">Redondeado, ajuste final en la última</div>
+                </div>
+              </div>
 
+              <div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;">
+                <button class="btn primary" id="btnBuildTransitRows">Procesar transitorias</button>
+                <button class="btn" id="btnCopyTransitRows">Copiar información</button>
+              </div>
+
+              <div class="hint" style="margin-top:10px;">
+                Regla aplicada: se toman solo las filas con ubicación <b>Bulk_CW*</b>, se eliminan del resultado final y se reemplazan por
+                nuevas ubicaciones <b>Bulk_CW1.1 ... Bulk_CW1.N</b>.  
+                Las filas originales se van partiendo una por una hasta llenar cada ubicación nueva.
+              </div>
+            </div>
+
+            <div>
+              <label for="txtTransitResult">Resultado transitorio</label>
+              <textarea id="txtTransitResult" placeholder="Aquí aparecerá el resultado listo para copiar..." style="min-height:260px;"></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
     <div id="viewLayout" class="grid hidden">
       <div class="card">
         <div class="card-header">
@@ -1238,7 +1288,12 @@ let stockMap = new Map();
   const kOcc = document.getElementById("kOcc");
   const kTransit = document.getElementById("kTransit");
   const kTransitSub = document.getElementById("kTransitSub");
-
+  const trNeed = document.getElementById("trNeed");
+  const trUnits = document.getElementById("trUnits");
+  const trTarget = document.getElementById("trTarget");
+  const txtTransitResult = document.getElementById("txtTransitResult");
+  const btnBuildTransitRows = document.getElementById("btnBuildTransitRows");
+  const btnCopyTransitRows = document.getElementById("btnCopyTransitRows");
   const manualTable = document.getElementById("manualTable").querySelector("tbody");
   const btnReset = document.getElementById("btnReset");
 
@@ -3720,7 +3775,246 @@ function showInboundDetail(title, monthLabelText, rows){
       }
     });
   }
+  function isBulkSourceLoc(loc){
+    return /^bulk_cw\d+(\.\d+)?$/i.test(String(loc||"").trim());
+  }
 
+  function splitStockLineSafe(line){
+    const s = String(line || "");
+    if(s.includes("\t")) return s.split("\t").map(x=>String(x||"").trim());
+    if(s.includes(",")) return s.split(",").map(x=>String(x||"").trim());
+    return s.trim().split(/\s+/).map(x=>String(x||"").trim());
+  }
+
+  function parseStockRowsForTransitFromText(){
+    const raw = String(txtStock?.value || "").trim();
+    if(!raw) return { header: [], rows: [] };
+
+    const lines = raw.split(/\r?\n/).filter(l=>l.trim());
+    if(!lines.length) return { header: [], rows: [] };
+
+    const header = splitStockLineSafe(lines[0]);
+    const headerNorm = header.map(normalizeHeader);
+
+    const idxBodega = findIndex(headerNorm, ["bodega","warehouse"]);
+    const idxVar = findIndex(headerNorm, ["variante","variant","sku","codigo","código","producto","item"]);
+    const idxZona = findIndex(headerNorm, ["zona","zone"]);
+    const idxLoc = findIndex(headerNorm, ["ubicacion","ubicación","location","locacion"]);
+    const idxCaja = findIndex(headerNorm, ["caja","box"]);
+    let idxQty = findIndex(headerNorm, ["physical quantity","qty","cantidad","quantity","physicalqty"]);
+
+    if(idxQty === -1){
+      const iPhys = headerNorm.findIndex(h => h === "physical");
+      if(iPhys !== -1 && headerNorm[iPhys+1] === "quantity") idxQty = iPhys;
+    }
+
+    const rows = [];
+
+    for(let i=1; i<lines.length; i++){
+      const cols = splitStockLineSafe(lines[i]);
+      if(!cols.length) continue;
+
+      const row = {
+        bodega: idxBodega !== -1 ? (cols[idxBodega] || "") : "",
+        variante: idxVar !== -1 ? (cols[idxVar] || "") : "",
+        zona: idxZona !== -1 ? (cols[idxZona] || "") : "",
+        ubicacion: idxLoc !== -1 ? (cols[idxLoc] || "") : "",
+        caja: idxCaja !== -1 ? (cols[idxCaja] || "") : "",
+        qty: 0
+      };
+
+      let q = 0;
+      if(idxQty !== -1){
+        q = parseNumberSmart(cols[idxQty]);
+        if(!Number.isFinite(q)){
+          q = parseNumberSmart(cols[idxQty + 1]);
+        }
+      }
+      if(!Number.isFinite(q)){
+        for(let j=cols.length-1; j>=0; j--){
+          const n = parseNumberSmart(cols[j]);
+          if(Number.isFinite(n)){
+            q = n;
+            break;
+          }
+        }
+      }
+
+      row.qty = Number.isFinite(q) ? Number(q) : 0;
+      rows.push(row);
+    }
+
+    return { header, rows };
+  }
+
+  function buildTransitReplacement(){
+    const parsed = parseStockRowsForTransitFromText();
+    const allRows = parsed.rows || [];
+
+    if(!allRows.length){
+      alert("⚠️ No hay data en 'Pegado de stock'.");
+      return null;
+    }
+
+    const bulkRows = allRows.filter(r => isBulkSourceLoc(r.ubicacion));
+    const nonBulkRows = allRows.filter(r => !isBulkSourceLoc(r.ubicacion));
+
+    const transNeed = Number(state?.transitory?.need || 0);
+
+    if(!bulkRows.length){
+      alert("⚠️ No encontré filas BULK_CW en el stock pegado.");
+      return null;
+    }
+    if(!transNeed || transNeed <= 0){
+      alert("⚠️ El KPI Transitorio no tiene valor válido todavía. Primero da click en 'Procesar / Actualizar'.");
+      return null;
+    }
+
+    const totalUnits = bulkRows.reduce((a,b)=> a + (Number(b.qty)||0), 0);
+    const targetPerLoc = Math.round(totalUnits / transNeed);
+
+    if(trNeed) trNeed.textContent = fmtInt(transNeed);
+    if(trUnits) trUnits.textContent = fmtInt(totalUnits);
+    if(trTarget) trTarget.textContent = fmtInt(targetPerLoc);
+
+    const cycleBase = bulkRows.map(r => ({
+      bodega: r.bodega,
+      variante: r.variante,
+      zona: r.zona,
+      caja: r.caja
+    }));
+
+    let cycleIdx = 0;
+    function nextMeta(){
+      const item = cycleBase[cycleIdx % cycleBase.length];
+      cycleIdx++;
+      return item;
+    }
+
+    const sourceQueue = bulkRows.map(r => ({
+      bodega: r.bodega,
+      variante: r.variante,
+      zona: r.zona,
+      caja: r.caja,
+      qty: Number(r.qty)||0
+    })).filter(r => r.qty > 0);
+
+    const newRows = [];
+    let queueIdx = 0;
+
+    for(let locNum = 1; locNum <= transNeed; locNum++){
+      const newLoc = `Bulk_CW1.${locNum}`;
+      let remainingTarget = (locNum === transNeed)
+        ? sourceQueue.slice(queueIdx).reduce((a,b)=> a + (Number(b.qty)||0), 0)
+        : targetPerLoc;
+
+      if(remainingTarget <= 0) break;
+
+      while(remainingTarget > 0 && queueIdx < sourceQueue.length){
+        const src = sourceQueue[queueIdx];
+
+        if((Number(src.qty)||0) <= 0){
+          queueIdx++;
+          continue;
+        }
+
+        const take = Math.min(remainingTarget, src.qty);
+
+        const meta = src.variante ? {
+          bodega: src.bodega,
+          variante: src.variante,
+          zona: src.zona,
+          caja: src.caja
+        } : nextMeta();
+
+        newRows.push({
+          bodega: meta.bodega,
+          variante: meta.variante,
+          zona: "Bulk",
+          ubicacion: newLoc,
+          caja: meta.caja,
+          qty: take
+        });
+
+        src.qty -= take;
+        remainingTarget -= take;
+
+        if(src.qty <= 0){
+          queueIdx++;
+        }
+      }
+    }
+
+    const finalRows = [...nonBulkRows, ...newRows];
+
+    let out = "Bodega\tVariante\tZona\tUbicación\tCaja\tPhysical Quantity\n";
+    out += finalRows.map(r =>
+      [
+        r.bodega ?? "",
+        r.variante ?? "",
+        r.zona ?? "",
+        r.ubicacion ?? "",
+        r.caja ?? "",
+        (Number(r.qty)||0)
+      ].join("\t")
+    ).join("\n");
+
+    return {
+      text: out,
+      totalUnits,
+      transNeed,
+      targetPerLoc,
+      createdRows: newRows.length
+    };
+  }
+
+  function refreshTransitPanelMini(){
+    const totalBulkUnits = (stockRowsParsed || []).reduce((acc, r)=>{
+      return isBulkSourceLoc(r.loc) ? acc + (Number(r.qty)||0) : acc;
+    }, 0);
+
+    const transNeed = Number(state?.transitory?.need || 0);
+    const targetPerLoc = transNeed > 0 ? Math.round(totalBulkUnits / transNeed) : 0;
+
+    if(trNeed) trNeed.textContent = transNeed ? fmtInt(transNeed) : "—";
+    if(trUnits) trUnits.textContent = totalBulkUnits ? fmtInt(totalBulkUnits) : "—";
+    if(trTarget) trTarget.textContent = targetPerLoc ? fmtInt(targetPerLoc) : "—";
+  }
+
+  if(btnBuildTransitRows){
+    btnBuildTransitRows.addEventListener("click", ()=>{
+      const built = buildTransitReplacement();
+      if(!built) return;
+      if(txtTransitResult) txtTransitResult.value = built.text;
+      alert(`✅ Transitorias generadas.\nUbicaciones: ${built.transNeed}\nUnidades BULK: ${fmtInt(built.totalUnits)}\nObjetivo por ubicación: ${fmtInt(built.targetPerLoc)}`);
+    });
+  }
+
+  if(btnCopyTransitRows){
+    btnCopyTransitRows.addEventListener("click", async ()=>{
+      const txt = String(txtTransitResult?.value || "").trim();
+      if(!txt){
+        alert("⚠️ Primero genera la información transitoria.");
+        return;
+      }
+      try{
+        await navigator.clipboard.writeText(txt);
+        alert("✅ Información copiada.");
+      }catch(e){
+        txtTransitResult.focus();
+        txtTransitResult.select();
+        document.execCommand("copy");
+        alert("✅ Información copiada.");
+      }
+    });
+  }
+
+  const __oldBtnProcessHandler = btnProcess.onclick;
+  btnProcess.addEventListener("click", ()=>{
+    setTimeout(()=> refreshTransitPanelMini(), 0);
+  });
+
+  refreshTransitPanelMini();
 </script>
 
 </body>
