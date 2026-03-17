@@ -655,14 +655,14 @@
       <button class="btn" id="btnExport">Exportar resumen (Excel)</button>
       <button class="btn" id="btnBg">Foto pasillo</button>
       <button class="btn" id="btnBgClear">Quitar foto</button>
-      <!-- ✅ ahora es Reset LIGHT -->
       <button class="btn danger" id="btnReset">Reset total (light)</button>
+    </div>
   </div>
 
   <div class="container">
 
     <div id="viewStock" class="grid">
-     <div class="card" id="panelTransitorio">
+      <div class="card">
         <div class="card-header">
           <div>
             <h3>📥 1) Pega tu reporte de stock</h3>
@@ -789,13 +789,11 @@
               <div class="value" id="kEmpty">—</div>
               <div class="sub">% Ocupación: <span id="kOcc">—</span></div>
             </div>
-
             <div class="kpi">
               <div class="label">Transitorio (equiv. ubicaciones)</div>
               <div class="value" id="kTransit">—</div>
               <div class="sub"><span id="kTransitSub">—</span></div>
             </div>
-
           </div>
         </div>
       </div>
@@ -822,8 +820,8 @@
           </table>
         </div>
       </div>
-    </div>
-     <div class="card">
+
+      <div class="card" id="panelTransitorio">
         <div class="card-header">
           <div>
             <h3>🟪 Generador de transitorias desde KPI</h3>
@@ -862,7 +860,7 @@
 
               <div class="hint" style="margin-top:10px;">
                 Regla aplicada: se toman solo las filas con ubicación <b>Bulk_CW*</b>, se eliminan del resultado final y se reemplazan por
-                nuevas ubicaciones <b>Bulk_CW1.1 ... Bulk_CW1.N</b>.  
+                nuevas ubicaciones <b>Bulk_CW1.1 ... Bulk_CW1.N</b>.
                 Las filas originales se van partiendo una por una hasta llenar cada ubicación nueva.
               </div>
             </div>
@@ -874,6 +872,8 @@
           </div>
         </div>
       </div>
+    </div>
+
     <div id="viewLayout" class="grid hidden">
       <div class="card">
         <div class="card-header">
