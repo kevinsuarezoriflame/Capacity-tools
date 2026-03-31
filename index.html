@@ -1069,14 +1069,24 @@
               </div>
             </div>
             <div class="card-body" style="padding-top:0;">
-              <div class="row" style="gap:12px; align-items:end; flex-wrap:wrap;">
-                <div style="min-width:260px; flex:1;">
-                  <label>🏷️ Unidades etiquetadas (manual)</label>
-                  <input id="inpTaggedUnits" type="number" min="0" step="1" placeholder="Ej: 200" />
-                  <div class="hint">Se guarda por mes (selector “Mes”). Solo afecta el KPI de Etiquetadas.</div>
+              <div class="row" style="gap:12px; align-items:end; flex-wrap:wrap; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
+                <div style="min-width:220px; flex:1;">
+                  <label>🏷️ Etiquetadas manual • 1era 15na</label>
+                  <input id="inpTaggedUnitsQ1" type="number" min="0" step="1" placeholder="Ej: 200" />
                 </div>
-                <button class="btn" id="btnSaveTagged" type="button">Guardar</button>
-                <button class="btn ghost" id="btnClearTagged" type="button">Limpiar</button>
+                <div style="min-width:220px; flex:1;">
+                  <label>🏷️ Etiquetadas manual • 2da 15na</label>
+                  <input id="inpTaggedUnitsQ2" type="number" min="0" step="1" placeholder="Ej: 180" />
+                </div>
+                <div style="min-width:220px; flex:1;">
+                  <label>🏷️ Etiquetadas manual • General</label>
+                  <input id="inpTaggedUnitsTotal" type="number" min="0" step="1" placeholder="0" readonly style="background:#f8fafc;" />
+                  <div class="hint">Se guarda por mes (selector “Mes”). General = 1era 15na + 2da 15na.</div>
+                </div>
+                <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
+                  <button class="btn" id="btnSaveTagged" type="button">Guardar</button>
+                  <button class="btn ghost" id="btnClearTagged" type="button">Limpiar</button>
+                </div>
               </div>
             </div>
           </div>
@@ -1160,6 +1170,7 @@
       </div>
     </div>
   </div>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script>
   const pad3 = n => String(n).padStart(3,'0');
   const pad2 = n => String(n).padStart(2,'0');
@@ -1538,8 +1549,7 @@ let stockMap = new Map();
   });
 
   btnExport.addEventListener("click", ()=>{
-    const lines = [];
-    lines.push("module,rack,filled_stock,filled_manual,empty,blocked,reserved,low_stock");
+    const rowsExport = [];
     for(const mod of orderedModulesDesc){
       const rack = moduleParity(mod)==="odd" ? "Rack1" : "Rack2";
       let fs=0,fm=0,em=0,bl=0,rs=0,ls=0;
@@ -1553,24 +1563,27 @@ let stockMap = new Map();
         if(st==="reserve") rs++;
         if(st==="low") ls++;
       }
-      lines.push([mod,rack,fs,fm,em,bl,rs,ls].join(","));
+      rowsExport.push({
+        Modulo: mod,
+        Rack: rack,
+        Stock_lleno: fs,
+        Manual: fm,
+        Vacio: em,
+        Bloqueado: bl,
+        Reservado: rs,
+        Bajo_stock: ls
+      });
     }
-    const htmlTable = [
-      '<html><head><meta charset="utf-8"></head><body><table border="1">',
-      '<tr><th>Modulo</th><th>Rack</th><th>Stock_lleno</th><th>Manual</th><th>Vacio</th><th>Bloqueado</th><th>Reservado</th><th>Bajo_stock</th></tr>',
-      ...lines.slice(1).map(l=>{
-        const c=l.split(',');
-        return `<tr>${c.map(x=>`<td>${x}</td>`).join('')}</tr>`;
-      }),
-      '</table></body></html>'
-    ].join('');
-    const blob = new Blob([htmlTable], {type:"application/vnd.ms-excel;charset=utf-8"});
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "capacity_tools_resumen.xls";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+
+    if(typeof XLSX === 'undefined'){
+      alert('⚠️ No se pudo cargar la librería de Excel. Revisa internet o vuelve a intentar.');
+      return;
+    }
+
+    const ws = XLSX.utils.json_to_sheet(rowsExport);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Resumen');
+    XLSX.writeFile(wb, 'capacity_tools_resumen.xlsx');
   });
 
   const LS_KEY_BG = "capacityTools_bgImage_v1";
@@ -2005,6 +2018,80 @@ function parseMoves(text){
     return bad.some(k=> fromL.includes(k));
   }
 
+  function getIOMManual(monthKey){
+    const raw = ioManual[monthKey] || {};
+    const q1 = Number(raw.taggedUnitsQ1 ?? 0) || 0;
+    const q2 = Number(raw.taggedUnitsQ2 ?? 0) || 0;
+    const total = Number(raw.taggedUnits ?? (q1 + q2)) || 0;
+    return { ...raw, taggedUnitsQ1:q1, taggedUnitsQ2:q2, taggedUnits: total };
+  }
+
+  function computeMetricByDayRange(rows, dayFrom, dayTo, metricId, monthKey){
+    const dayOk = (r)=>{
+      if(!r || !r.dt) return false;
+      const d = r.dt.getDate();
+      return d >= dayFrom && d <= dayTo;
+    };
+
+    if(metricId === 'in_tag'){
+      const man = getIOMManual(monthKey);
+      if(dayFrom===1 && dayTo===15) return Number(man.taggedUnitsQ1)||0;
+      if(dayFrom===16 && dayTo===31) return Number(man.taggedUnitsQ2)||0;
+      return Number(man.taggedUnits)||0;
+    }
+
+    if(metricId === 'bulk_units_in'){
+      return computeImportUnitsByDayRange(rows, dayFrom, dayTo);
+    }
+
+    if(metricId === 'bulk_units_out'){
+      return rows.filter(r => dayOk(r) && isPL(r.to) && String(r.from||'').trim()!=='' && !isExcludedOutboundFrom(r.from))
+                 .reduce((acc,r)=> acc + (Number(r.qty)||0), 0);
+    }
+
+    const EXCL_INBOUND_TO = ['pl','d_picking','procesos_cw','cyclecount','return'];
+    const isExcludedInboundToLocal = (toL)=>{
+      toL = (toL||'').toLowerCase().trim();
+      return EXCL_INBOUND_TO.some(k => toL === k || toL.includes(k));
+    };
+
+    if(metricId === 'in_des'){
+      const map = new Map();
+      for(const r of rows){
+        if(!dayOk(r)) continue;
+        const desc = String(r.desc||'').toLowerCase();
+        if(!desc.includes('desarmad')) continue;
+        const key = r.dt ? String(r.dt.getTime()) : (r.dateRaw || r.movementDate || Math.random().toString());
+        const prev = map.get(key) || 0;
+        const qty = Number(r.qty)||0;
+        if(qty >= prev) map.set(key, qty);
+      }
+      return Array.from(map.values()).reduce((a,b)=>a+b,0);
+    }
+
+    let total = 0;
+    for(const r of rows){
+      if(!dayOk(r)) continue;
+      const fromL = String(r.from||'').toLowerCase();
+      const toL   = String(r.to||'').toLowerCase();
+      const desc  = String(r.desc||'').toLowerCase();
+      const inbound = fromL.includes('inbound');
+      if(!inbound) continue;
+      if(isExcludedInboundToLocal(r.to)) continue;
+
+      if(metricId === 'in_air'){
+        if(desc.includes('air')) total += Number(r.qty)||0;
+      }else if(metricId === 'in_sea'){
+        if(toL.includes('compra local')) continue;
+        if(toL.includes('armados_cw') || toL.includes('armados cw') || toL.includes('armados')) continue;
+        if(!desc.includes('air')) total += Number(r.qty)||0;
+      }else if(metricId === 'in_arm'){
+        if(toL.includes('armados_cw') || toL.includes('armados cw') || toL.includes('armados')) total += Number(r.qty)||0;
+      }
+    }
+    return total;
+  }
+
   function computeIOMetrics(rows, monthKey){
     let air=0, sea=0, compraLocal=0, armados=0, desarmados=0, outboundUnits=0;
     const det = {
@@ -2072,8 +2159,10 @@ for(const r of rows){
     const palletsInbound = Math.ceil((importUnits||0) / 1500);
     const boxesInbound   = Math.ceil((importUnits||0) / 30);
 
-    const man = ioManual[monthKey] || { taggedUnits:0, importPallets:[] };
+    const man = getIOMManual(monthKey);
     const taggedUnits = Number(man.taggedUnits)||0;
+    const taggedUnitsQ1 = Number(man.taggedUnitsQ1)||0;
+    const taggedUnitsQ2 = Number(man.taggedUnitsQ2)||0;
 
     const boxesOutbound = Math.ceil((outboundUnits||0)/30);
     const palletsOutbound = Math.ceil((outboundUnits||0)/1500);
@@ -2082,7 +2171,7 @@ for(const r of rows){
       air, sea, compraLocal, armados, desarmados,
       importUnits, palletsInbound, boxesInbound,
       outboundUnits, palletsOutbound, boxesOutbound,
-      taggedUnits,
+      taggedUnits, taggedUnitsQ1, taggedUnitsQ2,
       det
     };
   }
@@ -2143,8 +2232,10 @@ for(const r of rows){
       }
       rows = snap.rows.map(min => inflateMoveRow(min, monthKey));
       // en snap usamos taggedUnits del snapshot (congelado)
-      ioManual[monthKey] = ioManual[monthKey] || { taggedUnits:0, importPallets:[] };
+      ioManual[monthKey] = ioManual[monthKey] || { taggedUnits:0, taggedUnitsQ1:0, taggedUnitsQ2:0, importPallets:[] };
       ioManual[monthKey].taggedUnits = snap.taggedUnits || 0;
+      ioManual[monthKey].taggedUnitsQ1 = snap.taggedUnitsQ1 || 0;
+      ioManual[monthKey].taggedUnitsQ2 = snap.taggedUnitsQ2 || 0;
     }else{
       rows = movesByMonth.get(monthKey) || [];
     }
@@ -2180,6 +2271,7 @@ for(const r of rows){
       in_sea: "sea",
       in_local: "local",
       in_arm: "arm",
+      in_des: "local",
       in_tag: "tag",
       bulk_units_in: "bulkIn",
       bulk_pallets_in: "bulkIn",
@@ -2199,8 +2291,9 @@ for(const r of rows){
 
       // ✅ Botón “Gráfico” dentro del KPI Bulk units - outbound
       const hasChart = k.id === "bulk_units_out";
-      // ✅ Botones por quincena dentro del KPI Bulk units - inbound
-      const hasQuincena = k.id === "bulk_units_in";
+      // ✅ Botones por quincena dentro de KPIs seleccionados
+      const quincenaIds = new Set(["in_air","in_sea","in_arm","in_des","in_tag","bulk_units_out","bulk_units_in"]);
+      const hasQuincena = quincenaIds.has(k.id);
       div.innerHTML = `
         <div class="kpiTop"></div>
         ${hasChart ? `
@@ -2216,7 +2309,7 @@ for(const r of rows){
           <div class="sub" style="margin-top:6px;">${escapeHtml(k.sub||"")}</div>
           ${hasQuincena ? `
             <div class="kpiQuincena" style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
-              <button type="button" class="btn xs" data-q="q1">1era 15na</button>
+              <button type="button" class="btn xs active" data-q="q1">1era 15na</button>
               <button type="button" class="btn xs" data-q="q2">2da 15na</button>
             </div>
           ` : ``}
@@ -2239,67 +2332,86 @@ for(const r of rows){
         const valEl = div.querySelector(".value");
         const subEl = div.querySelector(".sub");
 
-        // valor total (default)
         const total = Number(k.value)||0;
-        const v1 = Number(q1Import)||0;
-        const v2 = Number(q2Import)||0;
+        const v1 = Number(computeMetricByDayRange(rows, 1, 15, k.id, monthKey))||0;
+        const v2 = Number(computeMetricByDayRange(rows, 16, 31, k.id, monthKey))||0;
+
+        function labelFor(mode){
+          const base = String(k.label || '').replace(/^[^\w\d]+\s*/, '').trim();
+          if(mode==='q1') return `${base} • 1era 15na`;
+          if(mode==='q2') return `${base} • 2da 15na`;
+          return k.sub || '';
+        }
+
+        function syncBtns(mode){
+          [b1,b2].forEach(btn=> btn && btn.classList.remove('active'));
+          if(mode==='q1' && b1) b1.classList.add('active');
+          if(mode==='q2' && b2) b2.classList.add('active');
+        }
 
         function setMode(mode){
-          // mode: "total" | "q1" | "q2"
           if(!valEl) return;
-          if(mode==="q1"){
-            valEl.textContent = fmtInt(v1);
-            if(subEl) subEl.textContent = "AIR + Contenedor • 1era 15na";
-            b1 && b1.classList.add("active");
-            b2 && b2.classList.remove("active");
-            div.dataset.quincena = "q1";
-          }else if(mode==="q2"){
+          if(mode==='q2'){
             valEl.textContent = fmtInt(v2);
-            if(subEl) subEl.textContent = "AIR + Contenedor • 2da 15na";
-            b2 && b2.classList.add("active");
-            b1 && b1.classList.remove("active");
-            div.dataset.quincena = "q2";
+            if(subEl) subEl.textContent = labelFor('q2');
+            div.dataset.quincena = 'q2';
+            syncBtns('q2');
+          }else if(mode==='q1'){
+            valEl.textContent = fmtInt(v1);
+            if(subEl) subEl.textContent = labelFor('q1');
+            div.dataset.quincena = 'q1';
+            syncBtns('q1');
           }else{
             valEl.textContent = fmtInt(total);
-            if(subEl) subEl.textContent = escapeHtml(k.sub||"");
-            b1 && b1.classList.remove("active");
-            b2 && b2.classList.remove("active");
-            div.dataset.quincena = "total";
+            if(subEl) subEl.textContent = k.sub || '';
+            div.dataset.quincena = 'total';
+            syncBtns('total');
           }
         }
-        setMode("total");
+        setMode('total');
 
         const safeClick = (mode)=> (ev)=>{
           ev.stopPropagation();
-          // toggle: si ya está activo, vuelve a total
-          const cur = div.dataset.quincena || "total";
-          if(cur===mode) setMode("total");
-          else setMode(mode);
+          setMode(mode);
         };
-        if(b1) b1.onclick = safeClick("q1");
-        if(b2) b2.onclick = safeClick("q2");
+        if(b1) b1.onclick = safeClick('q1');
+        if(b2) b2.onclick = safeClick('q2');
+
+        if(clickable){
+          div.addEventListener("click", (ev)=>{
+            if(ev.target && ev.target.closest('.kpiQuincena')) return;
+            setMode('total');
+          });
+        }
       }
 
       if(clickable){
-        div.addEventListener("click", ()=>{
+        div.addEventListener("dblclick", ()=>{
           const key = k.detailKey;
-          let rowsToShow = [];
-          if(key==="inbound_import_all"){
-            // Detalle de Bulk units - inbound: por requerimiento se muestra 2da 15na por defecto
-            const qMode = (div.dataset.quincena || "total"); // total|q1|q2
-            const all = [...m.det.inbound_air, ...m.det.inbound_sea];
+          const qMode = div.dataset.quincena || "total";
 
-            // Si el KPI está en modo quincena, respeta el modo; si está en total, muestra 2da 15na por defecto
-            const effective = (qMode==="q1" || qMode==="q2") ? qMode : "q2";
-            rowsToShow = all.filter(r=>{
-              if(!r || !r.dt) return false;
+          function filterRowsByQuincena(arr){
+            const rowsBase = Array.isArray(arr) ? arr : [];
+            if(qMode === 'total') return rowsBase;
+            return rowsBase.filter(r=>{
+              if(!r || !r.dt || !(r.dt instanceof Date) || isNaN(r.dt)) return false;
               const d = r.dt.getDate();
-              return effective==="q1" ? (d>=1 && d<=15) : (d>=16 && d<=31);
+              return qMode === "q1" ? (d >= 1 && d <= 15) : (d >= 16 && d <= 31);
             });
-          }else{
-            rowsToShow = m.det[key] || [];
           }
-          showInboundDetail(stripHtml(k.label), monthLabel(monthKey) + (isSnap ? " (CERRADO)" : ""), rowsToShow);
+
+          let rowsToShow = [];
+          if(key === "inbound_import_all"){
+            rowsToShow = filterRowsByQuincena([...(m.det.inbound_air || []), ...(m.det.inbound_sea || [])]);
+          }else{
+            rowsToShow = filterRowsByQuincena(m.det[key] || []);
+          }
+
+          let titleSuffix = '';
+          if(qMode === 'q1') titleSuffix = ' • 1era 15na';
+          if(qMode === 'q2') titleSuffix = ' • 2da 15na';
+          if(qMode === 'total') titleSuffix = ' • Total';
+          showInboundDetail(stripHtml(k.label) + titleSuffix, monthLabel(monthKey) + (isSnap ? " (CERRADO)" : ""), rowsToShow);
         });
       }
 
@@ -2307,21 +2419,41 @@ for(const r of rows){
     }
 
     // Ajustes del mes (manual) — si estás viendo SNAP: lo dejamos bloqueado “soft”
-    const inpTagged = document.getElementById("inpTaggedUnits");
+    const inpTaggedQ1 = document.getElementById("inpTaggedUnitsQ1");
+    const inpTaggedQ2 = document.getElementById("inpTaggedUnitsQ2");
+    const inpTaggedTotal = document.getElementById("inpTaggedUnitsTotal");
     const btnSaveTagged = document.getElementById("btnSaveTagged");
     const btnClearTagged = document.getElementById("btnClearTagged");
 
-    if(inpTagged){
-      inpTagged.value = String(m.taggedUnits || 0);
-      inpTagged.disabled = isSnap;
+    function refreshTaggedInputs(){
+      const man = getIOMManual(monthKey);
+      if(inpTaggedQ1) inpTaggedQ1.value = String(man.taggedUnitsQ1 || 0);
+      if(inpTaggedQ2) inpTaggedQ2.value = String(man.taggedUnitsQ2 || 0);
+      if(inpTaggedTotal) inpTaggedTotal.value = String((Number(man.taggedUnitsQ1)||0) + (Number(man.taggedUnitsQ2)||0));
+      [inpTaggedQ1, inpTaggedQ2].forEach(el=>{ if(el) el.disabled = isSnap; });
+      if(inpTaggedTotal) inpTaggedTotal.disabled = true;
     }
+    refreshTaggedInputs();
+
+    const recalcTaggedTotal = ()=>{
+      const v1 = Number(String(inpTaggedQ1?.value||'0').replace(/[^\d.-]/g,'')) || 0;
+      const v2 = Number(String(inpTaggedQ2?.value||'0').replace(/[^\d.-]/g,'')) || 0;
+      if(inpTaggedTotal) inpTaggedTotal.value = String(v1 + v2);
+    };
+    if(inpTaggedQ1) inpTaggedQ1.oninput = recalcTaggedTotal;
+    if(inpTaggedQ2) inpTaggedQ2.oninput = recalcTaggedTotal;
+    recalcTaggedTotal();
+
     if(btnSaveTagged){
       btnSaveTagged.disabled = isSnap;
       btnSaveTagged.onclick = ()=>{
         if(isSnap) return;
-        const v = Number(String(inpTagged?.value||"0").replace(/[^\d.-]/g,""));
-        ioManual[monthKey] = ioManual[monthKey] || { taggedUnits:0, importPallets:[] };
-        ioManual[monthKey].taggedUnits = Number.isFinite(v) ? v : 0;
+        const v1 = Number(String(inpTaggedQ1?.value||"0").replace(/[^\d.-]/g,""));
+        const v2 = Number(String(inpTaggedQ2?.value||"0").replace(/[^\d.-]/g,""));
+        ioManual[monthKey] = ioManual[monthKey] || { taggedUnits:0, taggedUnitsQ1:0, taggedUnitsQ2:0, importPallets:[] };
+        ioManual[monthKey].taggedUnitsQ1 = Number.isFinite(v1) ? v1 : 0;
+        ioManual[monthKey].taggedUnitsQ2 = Number.isFinite(v2) ? v2 : 0;
+        ioManual[monthKey].taggedUnits = (Number.isFinite(v1) ? v1 : 0) + (Number.isFinite(v2) ? v2 : 0);
         saveIOM();
         renderInboundOutbound();
       };
@@ -2330,8 +2462,12 @@ for(const r of rows){
       btnClearTagged.disabled = isSnap;
       btnClearTagged.onclick = ()=>{
         if(isSnap) return;
-        if(inpTagged) inpTagged.value = "0";
-        ioManual[monthKey] = ioManual[monthKey] || { taggedUnits:0, importPallets:[] };
+        if(inpTaggedQ1) inpTaggedQ1.value = "0";
+        if(inpTaggedQ2) inpTaggedQ2.value = "0";
+        if(inpTaggedTotal) inpTaggedTotal.value = "0";
+        ioManual[monthKey] = ioManual[monthKey] || { taggedUnits:0, taggedUnitsQ1:0, taggedUnitsQ2:0, importPallets:[] };
+        ioManual[monthKey].taggedUnitsQ1 = 0;
+        ioManual[monthKey].taggedUnitsQ2 = 0;
         ioManual[monthKey].taggedUnits = 0;
         saveIOM();
         renderInboundOutbound();
@@ -2352,11 +2488,16 @@ for(const r of rows){
         if(monthKey==="SIN-FECHA") return alert("⚠️ No se puede cerrar 'Sin fecha'.");
         if(!confirm(`Cerrar ${monthLabel(monthKey)}: se guardará snapshot y NO se afectará con futuros pegados. ¿Confirmas?`)) return;
 
-        const taggedUnits = Number((ioManual[monthKey]?.taggedUnits)||0);
+        const manClose = getIOMManual(monthKey);
+        const taggedUnits = Number(manClose.taggedUnits||0);
+        const taggedUnitsQ1 = Number(manClose.taggedUnitsQ1||0);
+        const taggedUnitsQ2 = Number(manClose.taggedUnitsQ2||0);
         const minRows = rows.map(r=> deflateMoveRow(r));
         ioSnaps[monthKey] = {
           createdAt: new Date().toISOString(),
           taggedUnits,
+          taggedUnitsQ1,
+          taggedUnitsQ2,
           rows: minRows
         };
         saveIOSnaps();
@@ -2404,45 +2545,28 @@ for(const r of rows){
   }
 
   
-  // === Exportar tabla a Excel (HTML .xls compatible) ===
+  // === Exportar tabla a Excel real (.xlsx) ===
   function exportTableToExcel(tableId, filename){
     const table = document.getElementById(tableId);
     if(!table){
       alert("No se encontró la tabla para exportar.");
       return;
     }
+    if(typeof XLSX === 'undefined'){
+      alert('⚠️ No se pudo cargar la librería de Excel.');
+      return;
+    }
 
-    // Clonar tabla y reemplazar valores formateados por valores crudos cuando existan
     const clone = table.cloneNode(true);
-    clone.querySelectorAll("[data-raw]").forEach(el=>{
-      const raw = el.getAttribute("data-raw");
-      if(raw !== null && raw !== undefined){
-        el.textContent = String(raw);
-      }
+    clone.querySelectorAll('[data-raw]').forEach(el=>{
+      const raw = el.getAttribute('data-raw');
+      if(raw !== null && raw !== undefined) el.textContent = String(raw);
     });
 
-    const html = `
-      <html xmlns:o="urn:schemas-microsoft-com:office:office"
-            xmlns:x="urn:schemas-microsoft-com:office:excel"
-            xmlns="http://www.w3.org/TR/REC-html40">
-        <head>
-          <meta charset="UTF-8">
-          <!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>
-            <x:Name>Detalle</x:Name>
-            <x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
-          </x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
-        </head>
-        <body>${clone.outerHTML}</body>
-      </html>
-    `;
-    const blob = new Blob([html], {type:"application/vnd.ms-excel;charset=utf-8"});
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = (filename || "detalle") + ".xls";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(()=>URL.revokeObjectURL(a.href), 1500);
+    const ws = XLSX.utils.table_to_sheet(clone, {raw:true});
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Detalle');
+    XLSX.writeFile(wb, (filename || 'detalle') + '.xlsx');
   }
 
 
@@ -3260,7 +3384,15 @@ function showInboundDetail(title, monthLabelText, rows){
       const raw = localStorage.getItem(LS_KEY_IO_MANUAL);
       if(!raw) return {};
       const obj = JSON.parse(raw);
-      return (obj && typeof obj==="object") ? obj : {};
+      if(!obj || typeof obj!=="object") return {};
+      Object.keys(obj).forEach(k=>{
+        const item = obj[k] || {};
+        const q1 = Number(item.taggedUnitsQ1 ?? 0) || 0;
+        const q2 = Number(item.taggedUnitsQ2 ?? 0) || 0;
+        const total = Number(item.taggedUnits ?? (q1 + q2)) || 0;
+        obj[k] = { ...item, taggedUnitsQ1:q1, taggedUnitsQ2:q2, taggedUnits: total };
+      });
+      return obj;
     }catch{
       return {};
     }
