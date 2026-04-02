@@ -2509,6 +2509,7 @@ for(const r of rows){
 
         // Cierra también la ocupación del mismo mes para que no se mezcle con el siguiente
         try{
+          migrateOccLegacyIfNeeded();
           const occMonthly = loadOccMonthlyMap();
           const occSnaps = loadOccSnaps();
           const occBucket = occMonthly[monthKey] && occMonthly[monthKey].dates ? occMonthly[monthKey].dates : null;
@@ -3760,36 +3761,53 @@ function showInboundDetail(title, monthLabelText, rows){
   function saveOccSnaps(map){
     try{ localStorage.setItem(LS_KEY_OCC_SNAPS, JSON.stringify(map||{})); }catch(e){}
   }
+  function readOccLegacyMap(){
+    try{
+      const rawLegacy = localStorage.getItem(LS_KEY_OCC_LEGACY);
+      if(!rawLegacy) return {};
+      const legacy = JSON.parse(rawLegacy);
+      return (legacy && typeof legacy === "object") ? legacy : {};
+    }catch(e){ return {}; }
+  }
+  function mergeOccLegacyIntoMonthly(current, legacy){
+    const next = JSON.parse(JSON.stringify(current || {}));
+    for(const dateKey of Object.keys(legacy || {})){
+      const monthKey = getMonthKeyFromDateStr(dateKey);
+      if(!monthKey) continue;
+      next[monthKey] = next[monthKey] || { dates:{} };
+      next[monthKey].dates = next[monthKey].dates || {};
+      if(!next[monthKey].dates[dateKey]){
+        next[monthKey].dates[dateKey] = legacy[dateKey];
+      }
+    }
+    return next;
+  }
   function migrateOccLegacyIfNeeded(){
     try{
       const current = loadOccMonthlyMap();
-      if(Object.keys(current).length) return;
-      const rawLegacy = localStorage.getItem(LS_KEY_OCC_LEGACY);
-      if(!rawLegacy) return;
-      const legacy = JSON.parse(rawLegacy);
-      if(!legacy || typeof legacy !== "object") return;
-      const next = {};
-      for(const dateKey of Object.keys(legacy)){
-        const monthKey = getMonthKeyFromDateStr(dateKey);
-        if(!monthKey) continue;
-        next[monthKey] = next[monthKey] || { dates:{} };
-        next[monthKey].dates[dateKey] = legacy[dateKey];
-      }
-      if(Object.keys(next).length){
-        saveOccMonthlyMap(next);
+      const legacy = readOccLegacyMap();
+      if(!Object.keys(legacy).length) return;
+      const merged = mergeOccLegacyIntoMonthly(current, legacy);
+      const changed = JSON.stringify(merged) !== JSON.stringify(current || {});
+      if(changed){
+        saveOccMonthlyMap(merged);
       }
     }catch(e){}
   }
   migrateOccLegacyIfNeeded();
 
   function getOccMonthBucket(monthKey, mode="CUR"){
+    const mergedMap = mergeOccLegacyIntoMonthly(loadOccMonthlyMap(), readOccLegacyMap());
     if(mode === "SNAP"){
       const snaps = loadOccSnaps();
       const snap = snaps[monthKey] || {};
-      return (snap && snap.dates && typeof snap.dates === "object") ? snap.dates : {};
+      if(snap && snap.dates && typeof snap.dates === "object" && Object.keys(snap.dates).length){
+        return snap.dates;
+      }
+      const fallback = mergedMap[monthKey] || {};
+      return (fallback && fallback.dates && typeof fallback.dates === "object") ? fallback.dates : {};
     }
-    const map = loadOccMonthlyMap();
-    const bucket = map[monthKey] || {};
+    const bucket = mergedMap[monthKey] || {};
     return (bucket && bucket.dates && typeof bucket.dates === "object") ? bucket.dates : {};
   }
 
