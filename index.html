@@ -1963,7 +1963,12 @@ function parseMoves(text){
       selMonth.value = "CUR|SIN-DATOS";
     }
 
-    selMonth.onchange = ()=> renderInboundOutbound();
+    selMonth.onchange = ()=> {
+      renderInboundOutbound();
+      try{
+        if(modalOcc && modalOcc.classList.contains("open")) renderOccHistoryLocal();
+      }catch(e){}
+    };
   }
 
   function parseAnyDate(v){
@@ -2501,6 +2506,23 @@ for(const r of rows){
           rows: minRows
         };
         saveIOSnaps();
+
+        // Cierra también la ocupación del mismo mes para que no se mezcle con el siguiente
+        try{
+          const occMonthly = loadOccMonthlyMap();
+          const occSnaps = loadOccSnaps();
+          const occBucket = occMonthly[monthKey] && occMonthly[monthKey].dates ? occMonthly[monthKey].dates : null;
+          if(occBucket && Object.keys(occBucket).length){
+            occSnaps[monthKey] = {
+              closedAt: new Date().toISOString(),
+              dates: JSON.parse(JSON.stringify(occBucket))
+            };
+            delete occMonthly[monthKey];
+            saveOccMonthlyMap(occMonthly);
+            saveOccSnaps(occSnaps);
+          }
+        }catch(e){ console.warn("No se pudo cerrar snapshot de ocupación", e); }
+
         rebuildMonthSelector();
         document.getElementById("selMonth").value = `SNAP|${monthKey}`;
         renderInboundOutbound();
@@ -3625,9 +3647,11 @@ function showInboundDetail(title, monthLabelText, rows){
   }
 
   // =========================
-  // Ocupación diaria (PC only)
+  // Ocupación diaria por mes (PC only)
   // =========================
-  const LS_KEY_OCC = "capacityTools_occHistory_v1"; // { "YYYY-MM-DD": { pct:number, palletsUsed:number, productos?:number, empaque?:number } }
+  const LS_KEY_OCC = "capacityTools_occHistoryByMonth_v2"; // { "YYYY-MM": { dates:{ "YYYY-MM-DD": {...} } } }
+  const LS_KEY_OCC_LEGACY = "capacityTools_occHistory_v1"; // formato anterior plano por fecha
+  const LS_KEY_OCC_SNAPS = "capacityTools_occSnapshots_v1"; // { "YYYY-MM": { closedAt, dates:{...} } }
 
   const btnSaveOccToday = document.getElementById("btnSaveOccToday");
   const btnViewOccHistory = document.getElementById("btnViewOccHistory");
@@ -3652,6 +3676,26 @@ function showInboundDetail(title, monthLabelText, rows){
     const day = String(d.getDate()).padStart(2,"0");
     return `${y}-${m}-${day}`;
   }
+  function getMonthKeyFromDateStr(dateStr){
+    const s = String(dateStr||"").trim();
+    const m = s.match(/^(\d{4}-\d{2})-\d{2}$/);
+    return m ? m[1] : "";
+  }
+  function getCurrentSystemMonthKey(){
+    return fmtISODate(new Date()).slice(0,7);
+  }
+  function getSelectedOccContext(){
+    const selMonth = document.getElementById("selMonth");
+    const rawSel = selMonth && selMonth.value ? String(selMonth.value) : "";
+    if(rawSel.startsWith("SNAP|")){
+      return { mode:"SNAP", monthKey: rawSel.slice(5) || getCurrentSystemMonthKey() };
+    }
+    if(rawSel.startsWith("CUR|")){
+      const mk = rawSel.slice(4);
+      if(mk && mk!=="SIN-DATOS" && mk!=="SIN-FECHA") return { mode:"CUR", monthKey: mk };
+    }
+    return { mode:"CUR", monthKey: getCurrentSystemMonthKey() };
+  }
 
   function openOccModal(){ if(modalOcc) modalOcc.classList.add("open"); }
   function closeOccModal(){ if(modalOcc) modalOcc.classList.remove("open"); }
@@ -3662,7 +3706,7 @@ function showInboundDetail(title, monthLabelText, rows){
   function getCurrentOccPct(){
     const el = document.getElementById("capPct");
     if(!el) return null;
-    const t = (el.textContent||"").replace("%","").trim().replace(",",".");
+    const t = (el.textContent||"").replace("%","").trim().replace(",", ".");
     const v = Number(t);
     return Number.isFinite(v) ? v : null;
   }
@@ -3696,21 +3740,63 @@ function showInboundDetail(title, monthLabelText, rows){
     return out;
   }
 
-  function loadOccMap(){
+  function loadOccMonthlyMap(){
     try{
       const raw = localStorage.getItem(LS_KEY_OCC);
       const obj = raw ? JSON.parse(raw) : {};
       return (obj && typeof obj === "object") ? obj : {};
     }catch(e){ return {}; }
   }
-
-  function saveOccMap(map){
+  function saveOccMonthlyMap(map){
     try{ localStorage.setItem(LS_KEY_OCC, JSON.stringify(map||{})); }catch(e){}
+  }
+  function loadOccSnaps(){
+    try{
+      const raw = localStorage.getItem(LS_KEY_OCC_SNAPS);
+      const obj = raw ? JSON.parse(raw) : {};
+      return (obj && typeof obj === "object") ? obj : {};
+    }catch(e){ return {}; }
+  }
+  function saveOccSnaps(map){
+    try{ localStorage.setItem(LS_KEY_OCC_SNAPS, JSON.stringify(map||{})); }catch(e){}
+  }
+  function migrateOccLegacyIfNeeded(){
+    try{
+      const current = loadOccMonthlyMap();
+      if(Object.keys(current).length) return;
+      const rawLegacy = localStorage.getItem(LS_KEY_OCC_LEGACY);
+      if(!rawLegacy) return;
+      const legacy = JSON.parse(rawLegacy);
+      if(!legacy || typeof legacy !== "object") return;
+      const next = {};
+      for(const dateKey of Object.keys(legacy)){
+        const monthKey = getMonthKeyFromDateStr(dateKey);
+        if(!monthKey) continue;
+        next[monthKey] = next[monthKey] || { dates:{} };
+        next[monthKey].dates[dateKey] = legacy[dateKey];
+      }
+      if(Object.keys(next).length){
+        saveOccMonthlyMap(next);
+      }
+    }catch(e){}
+  }
+  migrateOccLegacyIfNeeded();
+
+  function getOccMonthBucket(monthKey, mode="CUR"){
+    if(mode === "SNAP"){
+      const snaps = loadOccSnaps();
+      const snap = snaps[monthKey] || {};
+      return (snap && snap.dates && typeof snap.dates === "object") ? snap.dates : {};
+    }
+    const map = loadOccMonthlyMap();
+    const bucket = map[monthKey] || {};
+    return (bucket && bucket.dates && typeof bucket.dates === "object") ? bucket.dates : {};
   }
 
   function buildOccSeries(){
-    const map = loadOccMap();
-    const keys = Object.keys(map).sort(); // YYYY-MM-DD lexicographic works
+    const ctx = getSelectedOccContext();
+    const map = getOccMonthBucket(ctx.monthKey, ctx.mode);
+    const keys = Object.keys(map).sort();
     __occDataSorted = keys.map(k=>{
       const r = map[k] || {};
       return {
@@ -3735,9 +3821,9 @@ function showInboundDetail(title, monthLabelText, rows){
     if(__occDataSorted.length){
       const first = __occDataSorted[0].date;
       const last = __occDataSorted[__occDataSorted.length-1].date;
-      if(occRangeLbl) occRangeLbl.textContent = `${first} → ${last}`;
+      if(occRangeLbl) occRangeLbl.textContent = `${monthLabel(ctx.monthKey)}${ctx.mode==="SNAP" ? " (CERRADO)" : ""} • ${first} → ${last}`;
     }else{
-      if(occRangeLbl) occRangeLbl.textContent = "—";
+      if(occRangeLbl) occRangeLbl.textContent = `${monthLabel(ctx.monthKey)}${ctx.mode==="SNAP" ? " (CERRADO)" : ""} • Sin ocupación guardada`;
     }
   }
 
@@ -3759,7 +3845,6 @@ function showInboundDetail(title, monthLabelText, rows){
     if(!occLine) return;
     buildOccSeries();
     drawLineChartPct(occLine, __occSeries);
-    // default: select last day
     setOccDetailByIndex(__occDataSorted.length-1);
   }
 
@@ -3788,6 +3873,18 @@ function showInboundDetail(title, monthLabelText, rows){
 
   if(btnSaveOccToday){
     btnSaveOccToday.addEventListener("click", ()=>{
+      const ctx = getSelectedOccContext();
+      if(ctx.mode === "SNAP"){
+        alert(`⚠️ ${monthLabel(ctx.monthKey)} ya está cerrado. La ocupación de ese mes es histórica y no se puede modificar.`);
+        return;
+      }
+      const today = fmtISODate(new Date());
+      const todayMonth = getMonthKeyFromDateStr(today);
+      if(ctx.monthKey !== todayMonth){
+        alert(`⚠️ Estás viendo ${monthLabel(ctx.monthKey)} pero hoy es ${monthLabel(todayMonth)}. Para guardar la ocupación diaria, cambia al mes vigente.`);
+        return;
+      }
+
       const pct = getCurrentOccPct();
       if(pct===null){ alert("No se pudo leer el % de ocupación actual."); return; }
 
@@ -3795,21 +3892,26 @@ function showInboundDetail(title, monthLabelText, rows){
       if(palletsUsed===null){ alert("No se pudo leer el total de pallets usados."); return; }
 
       const { productos, empaque } = getPalletsBreakdown();
-      const d = fmtISODate(new Date());
+      const map = loadOccMonthlyMap();
+      map[ctx.monthKey] = map[ctx.monthKey] || { dates:{} };
+      const monthDates = map[ctx.monthKey].dates || {};
 
-      const map = loadOccMap();
-      if(map[d]){
-        const prevPct = Number(map[d].pct);
-        const prevPal = Number(map[d].palletsUsed);
-        const ok = confirm(`Ya existe ocupación guardada para HOY (${d}).\nActual: ${Number.isFinite(prevPct)?prevPct.toFixed(2):"—"}% • Pallets: ${Number.isFinite(prevPal)?Math.round(prevPal):"—"}\n\n¿Deseas REEMPLAZARLA?`);
+      if(monthDates[today]){
+        const prevPct = Number(monthDates[today].pct);
+        const prevPal = Number(monthDates[today].palletsUsed);
+        const ok = confirm(`Ya existe ocupación guardada para HOY (${today}) en ${monthLabel(ctx.monthKey)}.
+Actual: ${Number.isFinite(prevPct)?prevPct.toFixed(2):"—"}% • Pallets: ${Number.isFinite(prevPal)?Math.round(prevPal):"—"}
+
+¿Deseas REEMPLAZARLA?`);
         if(!ok) return;
       }
 
-      map[d] = { pct, palletsUsed, productos, empaque };
-      saveOccMap(map);
+      monthDates[today] = { pct, palletsUsed, productos, empaque };
+      map[ctx.monthKey].dates = monthDates;
+      saveOccMonthlyMap(map);
 
-      alert(`✅ Ocupación guardada (${d})\n${pct.toFixed(2)}% • Pallets usados: ${Math.round(palletsUsed)}`);
-      // refresca modal si está abierto
+      alert(`✅ Ocupación guardada en ${monthLabel(ctx.monthKey)}
+${today} • ${pct.toFixed(2)}% • Pallets usados: ${Math.round(palletsUsed)}`);
       if(modalOcc && modalOcc.classList.contains("open")){
         try{ renderOccHistoryLocal(); }catch(e){}
       }
@@ -3818,17 +3920,31 @@ function showInboundDetail(title, monthLabelText, rows){
 
   if(btnDeleteOccToday){
     btnDeleteOccToday.addEventListener("click", ()=>{
-      const d = fmtISODate(new Date());
-      const map = loadOccMap();
-      if(!map[d]){
-        alert(`No hay ocupación guardada para hoy (${d}).`);
+      const ctx = getSelectedOccContext();
+      if(ctx.mode === "SNAP"){
+        alert(`⚠️ ${monthLabel(ctx.monthKey)} ya está cerrado. La ocupación histórica no se puede eliminar desde aquí.`);
         return;
       }
-      const ok = confirm(`¿Eliminar la ocupación guardada de HOY (${d})?\nEsta acción no se puede deshacer.`);
+      const today = fmtISODate(new Date());
+      const todayMonth = getMonthKeyFromDateStr(today);
+      if(ctx.monthKey !== todayMonth){
+        alert(`⚠️ Solo puedes eliminar el guardado del día en el mes vigente (${monthLabel(todayMonth)}).`);
+        return;
+      }
+
+      const map = loadOccMonthlyMap();
+      const bucket = map[ctx.monthKey] && map[ctx.monthKey].dates ? map[ctx.monthKey].dates : {};
+      if(!bucket[today]){
+        alert(`No hay ocupación guardada para hoy (${today}) en ${monthLabel(ctx.monthKey)}.`);
+        return;
+      }
+      const ok = confirm(`¿Eliminar la ocupación guardada de HOY (${today}) en ${monthLabel(ctx.monthKey)}?
+Esta acción no se puede deshacer.`);
       if(!ok) return;
-      delete map[d];
-      saveOccMap(map);
-      alert(`🗑️ Ocupación eliminada (${d}).`);
+      delete bucket[today];
+      if(map[ctx.monthKey]) map[ctx.monthKey].dates = bucket;
+      saveOccMonthlyMap(map);
+      alert(`🗑️ Ocupación eliminada (${today}) de ${monthLabel(ctx.monthKey)}.`);
       if(modalOcc && modalOcc.classList.contains("open")){
         try{ renderOccHistoryLocal(); }catch(e){}
       }
@@ -3845,8 +3961,9 @@ function showInboundDetail(title, monthLabelText, rows){
   if(btnExportOccPng && occLine){
     btnExportOccPng.addEventListener("click", ()=>{
       try{
+        const ctx = getSelectedOccContext();
         const a = document.createElement("a");
-        a.download = "ocupacion_diaria.png";
+        a.download = `ocupacion_${ctx.monthKey}${ctx.mode==="SNAP" ? "_cerrado" : ""}.png`;
         a.href = occLine.toDataURL("image/png");
         a.click();
       }catch(e){
@@ -3854,7 +3971,6 @@ function showInboundDetail(title, monthLabelText, rows){
       }
     });
   }
-
   // =========================
   // Botones "Guardar PC / Cargar PC" (antes nube)
   // =========================
