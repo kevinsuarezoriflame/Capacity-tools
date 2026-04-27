@@ -2087,11 +2087,9 @@ function parseMoves(text){
       if(metricId === 'in_air'){
         if(desc.includes('air')) total += Number(r.qty)||0;
       }else if(metricId === 'in_sea'){
-        if(toL.includes('compra local')) continue;
-        if(toL.includes('armados_cw') || toL.includes('armados cw') || toL.includes('armados')) continue;
-        if(!desc.includes('air')) total += Number(r.qty)||0;
+        if(/bulk_cw[1-6]/i.test(r.to || "")) total += Number(r.qty)||0;
       }else if(metricId === 'in_arm'){
-        if(toL.includes('armados_cw') || toL.includes('armados cw') || toL.includes('armados')) total += Number(r.qty)||0;
+        if(desc.includes('armad') && toL.includes('armados_cw')) total += Number(r.qty)||0;
       }
     }
     return total;
@@ -2139,13 +2137,17 @@ for(const r of rows){
         if(isExcludedInboundTo(r.to)) continue;
 
         if(toL.includes("compra local")){
-          compraLocal += r.qty; det.inbound_compra_local.push(r);
-        }else if(toL.includes("armados_cw") || toL.includes("armados cw") || toL.includes("armados")){
-          armados += r.qty; det.inbound_armados.push(r);
+          compraLocal += r.qty;
+          det.inbound_compra_local.push(r);
+        }else if(desc.includes("armad") && toL.includes("armados_cw")){
+          armados += r.qty;
+          det.inbound_armados.push(r);
         }else if(desc.includes("air")){
-          air += r.qty; det.inbound_air.push(r);
-        }else{
-          sea += r.qty; det.inbound_sea.push(r);
+          air += r.qty;
+          det.inbound_air.push(r);
+        }else if(/bulk_cw[1-6]/i.test(r.to || "")){
+          sea += r.qty;
+          det.inbound_sea.push(r);
         }
       }
 
@@ -2205,12 +2207,10 @@ for(const r of rows){
       if(!inbound) continue;
       if(isExcludedInboundTo(r.to)) continue;
 
-      // quincena solo aplica a importUnits (AIR + Contenedor); excluye Compra Local y Armados
-      if(toL.includes("compra local")) continue;
-      if(toL.includes("armados_cw") || toL.includes("armados cw") || toL.includes("armados")) continue;
-
+      // quincena solo aplica a importUnits (AIR + Contenedor).
+      // Contenedor ahora solo cuenta si To Location contiene Bulk_CW1..6.
       if(desc.includes("air")) air += (Number(r.qty)||0);
-      else sea += (Number(r.qty)||0);
+      else if(/bulk_cw[1-6]/i.test(r.to || "")) sea += (Number(r.qty)||0);
     }
 
     return air + sea;
@@ -2253,9 +2253,9 @@ for(const r of rows){
 
     const kpis = [
       { id:"in_air", label:"✈️ Unidades Importación (AIR)", value: m.air, sub:"From=inbound & Description contiene AIR", detailKey:"inbound_air" },
-      { id:"in_sea", label:"🚢 Unidades Importación (Contenedor)", value: m.sea, sub:"From=inbound & no AIR → SEA", detailKey:"inbound_sea" },
+      { id:"in_sea", label:"🚢 Unidades Importación (Contenedor)", value: m.sea, sub:"From=inbound & To contiene Bulk_CW1..6", detailKey:"inbound_sea" },
       { id:"in_local", label:"🏪 Unidades Compra Local", value: m.compraLocal, sub:"From=inbound & To contiene Compra Local", detailKey:"inbound_compra_local" },
-      { id:"in_arm", label:"🧩 Armados", value: m.armados, sub:"From=inbound & To contiene Armados_CW", detailKey:"inbound_armados" },
+      { id:"in_arm", label:"🧩 Armados", value: m.armados, sub:"Description contiene armad & To contiene Armados_CW", detailKey:"inbound_armados" },
       { id:"in_des", label:"🧰 Desarmados", value: m.desarmados, sub:"Description contiene desarmad (1 movimiento por fecha/hora)", detailKey:"inbound_desarmados" },
       { id:"in_tag", label:"🏷️ Unidades Etiquetadas (manual)", value: m.taggedUnits, sub:isSnap ? "Snapshot (cerrado)" : "Ingresadas manualmente por mes", detailKey:null },
 
