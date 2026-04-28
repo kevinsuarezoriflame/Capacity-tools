@@ -2139,7 +2139,7 @@ for(const r of rows){
         if(toL.includes("compra local")){
           compraLocal += r.qty;
           det.inbound_compra_local.push(r);
-        }else if(desc.includes("armad") && toL.includes("armados_cw")){
+        else if(desc.includes("armad") && !desc.includes("desarmad") && toL.includes("armados_cw")){
           armados += r.qty;
           det.inbound_armados.push(r);
         }else if(desc.includes("air")){
