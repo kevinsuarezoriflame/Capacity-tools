@@ -4071,87 +4071,90 @@ Esta acción no se puede deshacer.`);
         updatedBy: fb.auth.currentUser.email
       };
 
-     await fb.setDoc(fb.doc(fb.db, "capacity_tools", "main_stock"), {
-  stockText: payload.stockText,
-  updatedAt: fb.serverTimestamp(),
-  updatedBy: fb.auth.currentUser.email
-}, { merge: true });
+  if(btnCloudSave){
+  btnCloudSave.addEventListener("click", async ()=>{
+    try{
+      const fb = window.ctFirebase;
+      if(!fb) return alert("❌ Firebase no está cargado.");
 
-await fb.setDoc(fb.doc(fb.db, "capacity_tools", "main_moves"), {
-  movesText: payload.movesText,
-  updatedAt: fb.serverTimestamp(),
-  updatedBy: fb.auth.currentUser.email
-}, { merge: true });
+      if(!fb.auth.currentUser){
+        await fb.signInWithPopup(fb.auth, fb.provider);
+      }
 
-await fb.setDoc(fb.doc(fb.db, "capacity_tools", "main_manual"), {
-  manualOverrides: payload.manualOverrides,
-  updatedAt: fb.serverTimestamp(),
-  updatedBy: fb.auth.currentUser.email
-}, { merge: true });
+      const s = document.getElementById("txtStock");
+      const m = document.getElementById("txtMoves");
 
-await fb.setDoc(fb.doc(fb.db, "capacity_tools", "main_io"), {
-  ioManual: payload.ioManual,
-  ioSnaps: payload.ioSnaps,
-  updatedAt: fb.serverTimestamp(),
-  updatedBy: fb.auth.currentUser.email
-}, { merge: true });
+      const stockTextNow = s ? (s.value || "") : "";
+      const movesTextNow = m ? (m.value || "") : "";
 
-      localStorage.setItem(LS_KEY_STOCK, payload.stockText);
-      localStorage.setItem(LS_KEY_MOVES, payload.movesText);
-      localStorage.setItem(LS_KEY_MANUAL, JSON.stringify(payload.manualOverrides));
-      localStorage.setItem(LS_KEY_IO_MANUAL, JSON.stringify(payload.ioManual));
-      localStorage.setItem(LS_KEY_IO_SNAP, JSON.stringify(payload.ioSnaps));
+      await fb.setDoc(fb.doc(fb.db, "capacity_tools", "main_stock"), {
+        stockText: stockTextNow,
+        updatedAt: fb.serverTimestamp(),
+        updatedBy: fb.auth.currentUser.email
+      }, { merge: true });
+
+      await fb.setDoc(fb.doc(fb.db, "capacity_tools", "main_moves"), {
+        movesText: movesTextNow,
+        updatedAt: fb.serverTimestamp(),
+        updatedBy: fb.auth.currentUser.email
+      }, { merge: true });
+
+      await fb.setDoc(fb.doc(fb.db, "capacity_tools", "main_manual"), {
+        manualOverrides: Array.isArray(manualOverrides) ? manualOverrides : [],
+        updatedAt: fb.serverTimestamp(),
+        updatedBy: fb.auth.currentUser.email
+      }, { merge: true });
+
+      await fb.setDoc(fb.doc(fb.db, "capacity_tools", "main_io"), {
+        ioManual: typeof ioManual !== "undefined" ? ioManual : {},
+        ioSnaps: typeof ioSnaps !== "undefined" ? ioSnaps : {},
+        updatedAt: fb.serverTimestamp(),
+        updatedBy: fb.auth.currentUser.email
+      }, { merge: true });
+
+      localStorage.setItem(LS_KEY_STOCK, stockTextNow);
+      localStorage.setItem(LS_KEY_MOVES, movesTextNow);
+      localStorage.setItem(LS_KEY_MANUAL, JSON.stringify(manualOverrides));
+      localStorage.setItem(LS_KEY_IO_MANUAL, JSON.stringify(ioManual));
+      localStorage.setItem(LS_KEY_IO_SNAP, JSON.stringify(ioSnaps));
 
       setPcStatus("Guardado en Firebase ✓");
-      alert("✅ Guardado en Firebase y respaldo local.");
+      alert("✅ Guardado en Firebase por partes.");
     }catch(e){
       console.error(e);
-      alert("❌ No se pudo guardar en Firebase. Revisa login/reglas/config.");
+      alert("❌ No se pudo guardar en Firebase. Revisa consola.");
     }
   });
 }
 
-  if(btnCloudLoad){
+if(btnCloudLoad){
   btnCloudLoad.addEventListener("click", async ()=>{
     try{
       const fb = window.ctFirebase;
       if(!fb) return alert("❌ Firebase no está cargado.");
 
       const stockSnap = await fb.getDoc(fb.doc(fb.db, "capacity_tools", "main_stock"));
-const movesSnap = await fb.getDoc(fb.doc(fb.db, "capacity_tools", "main_moves"));
-const manualSnap = await fb.getDoc(fb.doc(fb.db, "capacity_tools", "main_manual"));
-const ioSnap = await fb.getDoc(fb.doc(fb.db, "capacity_tools", "main_io"));
+      const movesSnap = await fb.getDoc(fb.doc(fb.db, "capacity_tools", "main_moves"));
+      const manualSnap = await fb.getDoc(fb.db ? fb.doc(fb.db, "capacity_tools", "main_manual") : null);
+      const ioSnap = await fb.getDoc(fb.doc(fb.db, "capacity_tools", "main_io"));
 
-const stockData = stockSnap.exists() ? stockSnap.data() : {};
-const movesData = movesSnap.exists() ? movesSnap.data() : {};
-const manualData = manualSnap.exists() ? manualSnap.data() : {};
-const ioData = ioSnap.exists() ? ioSnap.data() : {};
-
-if(s) s.value = stockData.stockText || "";
-if(m) m.value = movesData.movesText || "";
-
-manualOverrides = Array.isArray(manualData.manualOverrides) ? manualData.manualOverrides : [];
-ioManual = ioData.ioManual || {};
-ioSnaps = ioData.ioSnaps || {};
-
-      if(!snap.exists()){
-        return alert("⚠️ No hay respaldo guardado en Firebase todavía.");
-      }
-
-      const data = snap.data();
+      const stockData = stockSnap.exists() ? stockSnap.data() : {};
+      const movesData = movesSnap.exists() ? movesSnap.data() : {};
+      const manualData = manualSnap.exists() ? manualSnap.data() : {};
+      const ioData = ioSnap.exists() ? ioSnap.data() : {};
 
       const s = document.getElementById("txtStock");
       const m = document.getElementById("txtMoves");
 
-      if(s) s.value = data.stockText || "";
-      if(m) m.value = data.movesText || "";
+      if(s) s.value = stockData.stockText || "";
+      if(m) m.value = movesData.movesText || "";
 
-      manualOverrides = Array.isArray(data.manualOverrides) ? data.manualOverrides : [];
-      ioManual = data.ioManual || {};
-      ioSnaps = data.ioSnaps || {};
+      manualOverrides = Array.isArray(manualData.manualOverrides) ? manualData.manualOverrides : [];
+      ioManual = ioData.ioManual || {};
+      ioSnaps = ioData.ioSnaps || {};
 
-      localStorage.setItem(LS_KEY_STOCK, data.stockText || "");
-      localStorage.setItem(LS_KEY_MOVES, data.movesText || "");
+      localStorage.setItem(LS_KEY_STOCK, stockData.stockText || "");
+      localStorage.setItem(LS_KEY_MOVES, movesData.movesText || "");
       localStorage.setItem(LS_KEY_MANUAL, JSON.stringify(manualOverrides));
       localStorage.setItem(LS_KEY_IO_MANUAL, JSON.stringify(ioManual));
       localStorage.setItem(LS_KEY_IO_SNAP, JSON.stringify(ioSnaps));
@@ -4163,10 +4166,10 @@ ioSnaps = ioData.ioSnaps || {};
       alert("✅ Cargado desde Firebase.");
     }catch(e){
       console.error(e);
-      alert("❌ No se pudo cargar desde Firebase.");
+      alert("❌ No se pudo cargar desde Firebase. Revisa consola.");
     }
   });
-}
+}  
   function isBulkSourceLoc(loc){
     return /^bulk_cw\d+(\.\d+)?$/i.test(String(loc||"").trim());
   }
