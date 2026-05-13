@@ -1171,22 +1171,35 @@
     </div>
   </div>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-<script>
-  <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-  import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-  import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
+
+  import {
+    getAuth,
+    GoogleAuthProvider,
+    signInWithPopup
+  } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
+
+  import {
+    getFirestore,
+    doc,
+    getDoc,
+    setDoc,
+    serverTimestamp
+  } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-firestore.js";
 
   const firebaseConfig = {
-    apiKey: "TU_API_KEY",
-    authDomain: "TU_PROYECTO.firebaseapp.com",
-    projectId: "TU_PROYECTO",
-    storageBucket: "TU_PROYECTO.appspot.com",
-    messagingSenderId: "XXXX",
-    appId: "XXXX"
+    apiKey: "AIzaSyBBrLGNfBdKiFdrn4VBpuzB2ZkOf_EbjpI",
+    authDomain: "capacity-tools-b09d6.firebaseapp.com",
+    projectId: "capacity-tools-b09d6",
+    storageBucket: "capacity-tools-b09d6.firebasestorage.app",
+    messagingSenderId: "241517150762",
+    appId: "1:241517150762:web:372131dc4ddb9ced14b953"
   };
 
   const app = initializeApp(firebaseConfig);
+
   const auth = getAuth(app);
   const db = getFirestore(app);
   const provider = new GoogleAuthProvider();
@@ -1196,13 +1209,16 @@
     db,
     provider,
     signInWithPopup,
-    onAuthStateChanged,
     doc,
     getDoc,
     setDoc,
     serverTimestamp
   };
+
+  console.log("🔥 Firebase conectado correctamente");
 </script>
+
+<script>
   const pad3 = n => String(n).padStart(3,'0');
   const pad2 = n => String(n).padStart(2,'0');
 
