@@ -4071,7 +4071,30 @@ Esta acción no se puede deshacer.`);
         updatedBy: fb.auth.currentUser.email
       };
 
-      await fb.setDoc(fb.doc(fb.db, "capacity_tools", "main"), payload, { merge: true });
+     await fb.setDoc(fb.doc(fb.db, "capacity_tools", "main_stock"), {
+  stockText: payload.stockText,
+  updatedAt: fb.serverTimestamp(),
+  updatedBy: fb.auth.currentUser.email
+}, { merge: true });
+
+await fb.setDoc(fb.doc(fb.db, "capacity_tools", "main_moves"), {
+  movesText: payload.movesText,
+  updatedAt: fb.serverTimestamp(),
+  updatedBy: fb.auth.currentUser.email
+}, { merge: true });
+
+await fb.setDoc(fb.doc(fb.db, "capacity_tools", "main_manual"), {
+  manualOverrides: payload.manualOverrides,
+  updatedAt: fb.serverTimestamp(),
+  updatedBy: fb.auth.currentUser.email
+}, { merge: true });
+
+await fb.setDoc(fb.doc(fb.db, "capacity_tools", "main_io"), {
+  ioManual: payload.ioManual,
+  ioSnaps: payload.ioSnaps,
+  updatedAt: fb.serverTimestamp(),
+  updatedBy: fb.auth.currentUser.email
+}, { merge: true });
 
       localStorage.setItem(LS_KEY_STOCK, payload.stockText);
       localStorage.setItem(LS_KEY_MOVES, payload.movesText);
@@ -4094,7 +4117,22 @@ Esta acción no se puede deshacer.`);
       const fb = window.ctFirebase;
       if(!fb) return alert("❌ Firebase no está cargado.");
 
-      const snap = await fb.getDoc(fb.doc(fb.db, "capacity_tools", "main"));
+      const stockSnap = await fb.getDoc(fb.doc(fb.db, "capacity_tools", "main_stock"));
+const movesSnap = await fb.getDoc(fb.doc(fb.db, "capacity_tools", "main_moves"));
+const manualSnap = await fb.getDoc(fb.doc(fb.db, "capacity_tools", "main_manual"));
+const ioSnap = await fb.getDoc(fb.doc(fb.db, "capacity_tools", "main_io"));
+
+const stockData = stockSnap.exists() ? stockSnap.data() : {};
+const movesData = movesSnap.exists() ? movesSnap.data() : {};
+const manualData = manualSnap.exists() ? manualSnap.data() : {};
+const ioData = ioSnap.exists() ? ioSnap.data() : {};
+
+if(s) s.value = stockData.stockText || "";
+if(m) m.value = movesData.movesText || "";
+
+manualOverrides = Array.isArray(manualData.manualOverrides) ? manualData.manualOverrides : [];
+ioManual = ioData.ioManual || {};
+ioSnaps = ioData.ioSnaps || {};
 
       if(!snap.exists()){
         return alert("⚠️ No hay respaldo guardado en Firebase todavía.");
