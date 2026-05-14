@@ -4037,24 +4037,23 @@ Esta acción no se puede deshacer.`);
     });
   }
   // =========================
-  // Firebase + respaldo local
-  // Guarda textos grandes en chunks para evitar el límite de 1 MB por documento de Firestore.
-  // Documentos usados:
-  // capacity_tools/main_stock_meta
-  // capacity_tools/stock_chunk_000..N
-  // capacity_tools/main_moves_meta
-  // capacity_tools/moves_chunk_000..N
-  // capacity_tools/main_manual
-  // capacity_tools/main_io
+  // Firebase + respaldo local ROBUSTO
+  // Guarda TODO en chunks pequeños para evitar el límite de 1 MB por documento.
+  // Firestore usado:
+  // capacity_tools/main_index
+  // capacity_tools/{dataset}_meta
+  // capacity_tools/{dataset}_chunk_000..N
   // =========================
   const btnCloudSave = document.getElementById("btnCloudSave");
   const btnCloudLoad = document.getElementById("btnCloudLoad");
   const cloudStatus = document.getElementById("cloudStatus");
-  const FIREBASE_CHUNK_SIZE = 650000;
+
+  // Mantener bastante bajo. Firestore permite 1MB por documento, pero el overhead cuenta.
+  const FIREBASE_CHUNK_SIZE = 280000;
 
   if(btnCloudSave){
     btnCloudSave.textContent = "💾 Guardar Firebase";
-    btnCloudSave.title = "Guarda stock, movimientos, manuales y ajustes en Firebase + respaldo local";
+    btnCloudSave.title = "Guarda stock, movimientos, manuales, ajustes y ocupación en Firebase + respaldo local";
   }
   if(btnCloudLoad){
     btnCloudLoad.textContent = "📥 Cargar Firebase";
@@ -4064,6 +4063,25 @@ Esta acción no se puede deshacer.`);
   function setPcStatus(msg){
     if(!cloudStatus) return;
     cloudStatus.textContent = msg || "—";
+  }
+
+  function safeJsonStringify(value, fallback){
+    try{
+      return JSON.stringify(value ?? fallback ?? {});
+    }catch(e){
+      console.warn("No se pudo convertir a JSON", e);
+      return JSON.stringify(fallback ?? {});
+    }
+  }
+
+  function safeJsonParse(text, fallback){
+    try{
+      if(text == null || text === "") return fallback;
+      return JSON.parse(text);
+    }catch(e){
+      console.warn("No se pudo leer JSON desde Firebase", e);
+      return fallback;
+    }
   }
 
   function splitTextForFirebase(text, size = FIREBASE_CHUNK_SIZE){
@@ -4076,29 +4094,39 @@ Esta acción no se puede deshacer.`);
     return chunks;
   }
 
-  async function saveLargeTextToFirebase(fb, prefix, text, userEmail){
-    const chunks = splitTextForFirebase(text);
+  function datasetChunkId(datasetKey, i){
+    return `${datasetKey}_chunk_${String(i).padStart(4, "0")}`;
+  }
 
-    await fb.setDoc(fb.doc(fb.db, "capacity_tools", `${prefix}_meta`), {
+  async function saveDatasetToFirebase(fb, datasetKey, text, userEmail){
+    const value = String(text || "");
+    const chunks = splitTextForFirebase(value);
+
+    // Metadata del dataset
+    await fb.setDoc(fb.doc(fb.db, "capacity_tools", `${datasetKey}_meta`), {
+      datasetKey,
       chunks: chunks.length,
-      length: String(text || "").length,
+      length: value.length,
       updatedAt: fb.serverTimestamp(),
       updatedBy: userEmail
     }, { merge: true });
 
+    // Chunks reales
     for(let i = 0; i < chunks.length; i++){
-      const chunkId = `${prefix.replace("main_", "")}_chunk_${String(i).padStart(3, "0")}`;
-      await fb.setDoc(fb.doc(fb.db, "capacity_tools", chunkId), {
-        text: chunks[i],
+      await fb.setDoc(fb.doc(fb.db, "capacity_tools", datasetChunkId(datasetKey, i)), {
+        datasetKey,
         index: i,
+        text: chunks[i],
         updatedAt: fb.serverTimestamp(),
         updatedBy: userEmail
       }, { merge: true });
     }
+
+    return { chunks: chunks.length, length: value.length };
   }
 
-  async function loadLargeTextFromFirebase(fb, prefix){
-    const metaSnap = await fb.getDoc(fb.doc(fb.db, "capacity_tools", `${prefix}_meta`));
+  async function loadDatasetFromFirebase(fb, datasetKey){
+    const metaSnap = await fb.getDoc(fb.doc(fb.db, "capacity_tools", `${datasetKey}_meta`));
     if(!metaSnap.exists()) return "";
 
     const meta = metaSnap.data() || {};
@@ -4107,8 +4135,7 @@ Esta acción no se puede deshacer.`);
 
     let out = "";
     for(let i = 0; i < totalChunks; i++){
-      const chunkId = `${prefix.replace("main_", "")}_chunk_${String(i).padStart(3, "0")}`;
-      const chunkSnap = await fb.getDoc(fb.doc(fb.db, "capacity_tools", chunkId));
+      const chunkSnap = await fb.getDoc(fb.doc(fb.db, "capacity_tools", datasetChunkId(datasetKey, i)));
       if(chunkSnap.exists()){
         const data = chunkSnap.data() || {};
         out += String(data.text || "");
@@ -4132,10 +4159,20 @@ Esta acción no se puede deshacer.`);
     return fb;
   }
 
+  function getLocalRaw(key){
+    try{ return localStorage.getItem(key) || ""; }
+    catch(e){ return ""; }
+  }
+
+  function setLocalRaw(key, value){
+    try{ localStorage.setItem(key, String(value || "")); }
+    catch(e){ console.warn("No se pudo guardar localStorage", key, e); }
+  }
+
   if(btnCloudSave){
     btnCloudSave.addEventListener("click", async ()=>{
       try{
-        setPcStatus("Guardando en Firebase...");
+        setPcStatus("Firebase: guardando...");
 
         const fb = await ensureFirebaseLogin();
         const userEmail = fb.auth.currentUser.email || "";
@@ -4145,25 +4182,46 @@ Esta acción no se puede deshacer.`);
 
         const stockTextNow = s ? (s.value || "") : "";
         const movesTextNow = m ? (m.value || "") : "";
+
         const manualNow = Array.isArray(manualOverrides) ? manualOverrides : [];
         const ioManualNow = typeof ioManual !== "undefined" ? ioManual : {};
         const ioSnapsNow = typeof ioSnaps !== "undefined" ? ioSnaps : {};
 
-        await saveLargeTextToFirebase(fb, "main_stock", stockTextNow, userEmail);
-        await saveLargeTextToFirebase(fb, "main_moves", movesTextNow, userEmail);
+        // Ocupación / históricos también van al backup nube.
+        const occMonthlyRaw = getLocalRaw(typeof LS_KEY_OCC !== "undefined" ? LS_KEY_OCC : "capacityTools_occHistoryByMonth_v2");
+        const occLegacyRaw  = getLocalRaw(typeof LS_KEY_OCC_LEGACY !== "undefined" ? LS_KEY_OCC_LEGACY : "capacityTools_occHistory_v1");
+        const occSnapsRaw   = getLocalRaw(typeof LS_KEY_OCC_SNAPS !== "undefined" ? LS_KEY_OCC_SNAPS : "capacityTools_occSnapshots_v1");
+        const bgRaw         = getLocalRaw(typeof LS_KEY_BG !== "undefined" ? LS_KEY_BG : "capacityTools_bgImage_v1");
 
-        await fb.setDoc(fb.doc(fb.db, "capacity_tools", "main_manual"), {
-          manualOverrides: manualNow,
+        const manifest = {
+          version: 2,
+          savedAt: new Date().toISOString(),
+          savedBy: userEmail,
+          datasets: {
+            stock_text: await saveDatasetToFirebase(fb, "stock_text", stockTextNow, userEmail),
+            moves_text: await saveDatasetToFirebase(fb, "moves_text", movesTextNow, userEmail),
+            manual_json: await saveDatasetToFirebase(fb, "manual_json", safeJsonStringify(manualNow, []), userEmail),
+            io_manual_json: await saveDatasetToFirebase(fb, "io_manual_json", safeJsonStringify(ioManualNow, {}), userEmail),
+            io_snaps_json: await saveDatasetToFirebase(fb, "io_snaps_json", safeJsonStringify(ioSnapsNow, {}), userEmail),
+            occ_monthly_json: await saveDatasetToFirebase(fb, "occ_monthly_json", occMonthlyRaw || "{}", userEmail),
+            occ_legacy_json: await saveDatasetToFirebase(fb, "occ_legacy_json", occLegacyRaw || "{}", userEmail),
+            occ_snaps_json: await saveDatasetToFirebase(fb, "occ_snaps_json", occSnapsRaw || "{}", userEmail),
+            aisle_bg: await saveDatasetToFirebase(fb, "aisle_bg", bgRaw || "", userEmail)
+          }
+        };
+
+        await fb.setDoc(fb.doc(fb.db, "capacity_tools", "main_index"), {
+          ...manifest,
           updatedAt: fb.serverTimestamp(),
           updatedBy: userEmail
         }, { merge: true });
 
-        await fb.setDoc(fb.doc(fb.db, "capacity_tools", "main_io"), {
-          ioManual: ioManualNow,
-          ioSnaps: ioSnapsNow,
-          updatedAt: fb.serverTimestamp(),
-          updatedBy: userEmail
-        }, { merge: true });
+        // Respaldo local inmediato
+        stockText = stockTextNow;
+        movesText = movesTextNow;
+        manualOverrides = manualNow;
+        ioManual = ioManualNow;
+        ioSnaps = ioSnapsNow;
 
         localStorage.setItem(LS_KEY_STOCK, stockTextNow);
         localStorage.setItem(LS_KEY_MOVES, movesTextNow);
@@ -4172,7 +4230,7 @@ Esta acción no se puede deshacer.`);
         localStorage.setItem(LS_KEY_IO_SNAP, JSON.stringify(ioSnapsNow));
 
         setPcStatus("Firebase: guardado ✓");
-        alert("✅ Guardado en Firebase correctamente.\nLa data grande se guardó en partes para evitar el límite de 1 MB.");
+        alert("✅ Guardado en Firebase correctamente.\nLa data grande se guardó en chunks pequeños.");
       }catch(e){
         console.error(e);
         setPcStatus("Firebase: error al guardar");
@@ -4184,18 +4242,20 @@ Esta acción no se puede deshacer.`);
   if(btnCloudLoad){
     btnCloudLoad.addEventListener("click", async ()=>{
       try{
-        setPcStatus("Cargando desde Firebase...");
+        setPcStatus("Firebase: cargando...");
 
         const fb = window.ctFirebase;
         if(!fb) return alert("❌ Firebase no está cargado.");
 
-        const stockTextCloud = await loadLargeTextFromFirebase(fb, "main_stock");
-        const movesTextCloud = await loadLargeTextFromFirebase(fb, "main_moves");
-        const manualSnap = await fb.getDoc(fb.doc(fb.db, "capacity_tools", "main_manual"));
-        const ioSnap = await fb.getDoc(fb.doc(fb.db, "capacity_tools", "main_io"));
-
-        const manualData = manualSnap.exists() ? manualSnap.data() : {};
-        const ioData = ioSnap.exists() ? ioSnap.data() : {};
+        const stockTextCloud = await loadDatasetFromFirebase(fb, "stock_text");
+        const movesTextCloud = await loadDatasetFromFirebase(fb, "moves_text");
+        const manualJsonCloud = await loadDatasetFromFirebase(fb, "manual_json");
+        const ioManualJsonCloud = await loadDatasetFromFirebase(fb, "io_manual_json");
+        const ioSnapsJsonCloud = await loadDatasetFromFirebase(fb, "io_snaps_json");
+        const occMonthlyCloud = await loadDatasetFromFirebase(fb, "occ_monthly_json");
+        const occLegacyCloud = await loadDatasetFromFirebase(fb, "occ_legacy_json");
+        const occSnapsCloud = await loadDatasetFromFirebase(fb, "occ_snaps_json");
+        const bgCloud = await loadDatasetFromFirebase(fb, "aisle_bg");
 
         const s = document.getElementById("txtStock");
         const m = document.getElementById("txtMoves");
@@ -4205,15 +4265,24 @@ Esta acción no se puede deshacer.`);
 
         stockText = stockTextCloud || "";
         movesText = movesTextCloud || "";
-        manualOverrides = Array.isArray(manualData.manualOverrides) ? manualData.manualOverrides : [];
-        ioManual = ioData.ioManual || {};
-        ioSnaps = ioData.ioSnaps || {};
+        manualOverrides = safeJsonParse(manualJsonCloud, []);
+        if(!Array.isArray(manualOverrides)) manualOverrides = [];
+        ioManual = safeJsonParse(ioManualJsonCloud, {});
+        ioSnaps = safeJsonParse(ioSnapsJsonCloud, {});
 
         localStorage.setItem(LS_KEY_STOCK, stockText);
         localStorage.setItem(LS_KEY_MOVES, movesText);
         localStorage.setItem(LS_KEY_MANUAL, JSON.stringify(manualOverrides));
-        localStorage.setItem(LS_KEY_IO_MANUAL, JSON.stringify(ioManual));
-        localStorage.setItem(LS_KEY_IO_SNAP, JSON.stringify(ioSnaps));
+        localStorage.setItem(LS_KEY_IO_MANUAL, JSON.stringify(ioManual || {}));
+        localStorage.setItem(LS_KEY_IO_SNAP, JSON.stringify(ioSnaps || {}));
+
+        if(occMonthlyCloud) setLocalRaw(typeof LS_KEY_OCC !== "undefined" ? LS_KEY_OCC : "capacityTools_occHistoryByMonth_v2", occMonthlyCloud);
+        if(occLegacyCloud) setLocalRaw(typeof LS_KEY_OCC_LEGACY !== "undefined" ? LS_KEY_OCC_LEGACY : "capacityTools_occHistory_v1", occLegacyCloud);
+        if(occSnapsCloud) setLocalRaw(typeof LS_KEY_OCC_SNAPS !== "undefined" ? LS_KEY_OCC_SNAPS : "capacityTools_occSnapshots_v1", occSnapsCloud);
+        if(bgCloud) {
+          setLocalRaw(typeof LS_KEY_BG !== "undefined" ? LS_KEY_BG : "capacityTools_bgImage_v1", bgCloud);
+          try{ applyAisleBg(bgCloud); }catch(e){}
+        }
 
         parseStock(stockText);
         parseMoves(movesText);
@@ -4224,7 +4293,8 @@ Esta acción no se puede deshacer.`);
         renderCapacity();
         rebuildMonthSelector();
         if(tabInbound && tabInbound.classList.contains("active")) renderInboundOutbound();
-        refreshTransitPanelMini();
+        try{ refreshTransitPanelMini(); }catch(e){}
+        try{ migrateOccLegacyIfNeeded(); }catch(e){}
 
         setPcStatus("Firebase: cargado ✓");
         alert("✅ Cargado desde Firebase correctamente.");
