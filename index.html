@@ -4195,10 +4195,27 @@ Esta acción no se puede deshacer.`);
     return Number.isFinite(n) ? n : NaN;
   }
 
+  function getOccAdminDates(mk){
+    const cur = getOccMonthBucket(mk, "CUR") || {};
+    const snaps = loadOccSnaps();
+    const snapDates = (snaps[mk] && snaps[mk].dates && typeof snaps[mk].dates === "object") ? snaps[mk].dates : {};
+    return Object.assign({}, snapDates, cur);
+  }
+
+  function saveOccAdminIntoSnapIfExists(mk, d, row, action){
+    const snaps = loadOccSnaps();
+    if(!snaps[mk] || !snaps[mk].dates || typeof snaps[mk].dates !== "object") return false;
+    if(action === "delete") delete snaps[mk].dates[d];
+    else snaps[mk].dates[d] = row;
+    snaps[mk].updatedAt = new Date().toISOString();
+    saveOccSnaps(snaps);
+    return true;
+  }
+
   function admRefreshMonthList(){
     const mk = admMonthKey();
     if(admOccDate && (!admOccDate.value || !admOccDate.value.startsWith(mk + "-"))) admOccDate.value = `${mk}-01`;
-    const dates = getOccMonthBucket(mk, "CUR") || {};
+    const dates = getOccAdminDates(mk);
     const keys = Object.keys(dates).sort();
     if(!admOccMonthList) return;
     if(!keys.length){
@@ -4224,7 +4241,7 @@ Esta acción no se puede deshacer.`);
   function admLoadDay(){
     const mk = admMonthKey();
     const d = admDateKey();
-    const dates = getOccMonthBucket(mk, "CUR") || {};
+    const dates = getOccAdminDates(mk);
     const r = dates[d];
     if(!r){ admSetStatus(`no existe data para ${d}. Puedes registrarla manualmente.`); return false; }
     if(admOccPct) admOccPct.value = Number.isFinite(Number(r.pct)) ? Number(r.pct).toFixed(2) : "";
@@ -4241,9 +4258,11 @@ Esta acción no se puede deshacer.`);
       const fb = await ensureFirebaseLogin();
       const userEmail = (fb.auth.currentUser && fb.auth.currentUser.email) || "";
       const raw = localStorage.getItem(LS_KEY_OCC) || "{}";
+      const rawSnaps = localStorage.getItem(LS_KEY_OCC_SNAPS) || "{}";
       const datasetInfo = await saveDatasetToFirebase(fb, "occ_monthly_json", raw, userEmail);
+      const snapInfo = await saveDatasetToFirebase(fb, "occ_snaps_json", rawSnaps, userEmail);
       await fb.setDoc(fb.doc(fb.db, "capacity_tools", "main_index"), {
-        datasets: { occ_monthly_json: datasetInfo },
+        datasets: { occ_monthly_json: datasetInfo, occ_snaps_json: snapInfo },
         updatedAt: fb.serverTimestamp(),
         updatedBy: userEmail
       }, { merge: true });
@@ -4277,6 +4296,8 @@ Esta acción no se puede deshacer.`);
     if(empaque !== null && Number.isFinite(empaque)) row.empaque = empaque;
     map[mk].dates[d] = row;
     saveOccMonthlyMap(map);
+    // Si el mes está cerrado, el gráfico lee desde occSnapshots; por eso actualizamos también ese snapshot.
+    saveOccAdminIntoSnapIfExists(mk, d, row, "save");
     admRefreshMonthList();
     if(modalOcc && modalOcc.classList.contains("open")) { try{ renderOccHistoryLocal(); }catch(e){} }
     await admSaveOccMonthlyToFirebase();
@@ -4290,6 +4311,7 @@ Esta acción no se puede deshacer.`);
     if(!confirm(`¿Eliminar la ocupación guardada de ${d}?`)) return;
     delete map[mk].dates[d];
     saveOccMonthlyMap(map);
+    saveOccAdminIntoSnapIfExists(mk, d, null, "delete");
     admRefreshMonthList();
     if(modalOcc && modalOcc.classList.contains("open")) { try{ renderOccHistoryLocal(); }catch(e){} }
     await admSaveOccMonthlyToFirebase();
