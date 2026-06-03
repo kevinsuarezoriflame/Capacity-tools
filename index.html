@@ -1957,67 +1957,48 @@ function parseMoves(text){
     rebuildMonthSelector();
   }
 
-  function getOccSavedMonthKeysForSelector(){
-    const keys = new Set();
-    try{
-      const raw = localStorage.getItem("capacityTools_occHistoryByMonth_v2");
-      const obj = raw ? JSON.parse(raw) : {};
-      Object.keys(obj || {}).forEach(k=>{
-        if(/^\d{4}-\d{2}$/.test(k) && obj[k] && obj[k].dates && Object.keys(obj[k].dates).length){
-          keys.add(k);
-        }
-      });
-    }catch(e){}
-    try{
-      const raw = localStorage.getItem("capacityTools_occSnapshots_v1");
-      const obj = raw ? JSON.parse(raw) : {};
-      Object.keys(obj || {}).forEach(k=>{
-        if(/^\d{4}-\d{2}$/.test(k) && obj[k] && obj[k].dates && Object.keys(obj[k].dates).length){
-          keys.add(k);
-        }
-      });
-    }catch(e){}
-    return Array.from(keys).sort((a,b)=>a.localeCompare(b));
-  }
-
   function rebuildMonthSelector(){
     const selMonth = document.getElementById("selMonth");
     if(!selMonth) return;
+
+    const previousValue = selMonth.value || "";
     selMonth.innerHTML = "";
 
-    // Grupo 1: Mes en curso (pegado)
+    // ✅ Meses vivos: movimientos pegados + historial de ocupación guardado.
+    // Antes solo salían meses del Panel 3; por eso ocupación antigua quedaba invisible.
+    let occKeys = [];
+    try{
+      const occMap = (typeof loadOccMonthlyMap === "function") ? loadOccMonthlyMap() : {};
+      const legacyMap = (typeof readOccLegacyMap === "function") ? readOccLegacyMap() : {};
+      const fromMonthly = Object.keys(occMap || {}).filter(k => occMap[k] && occMap[k].dates && Object.keys(occMap[k].dates).length);
+      const fromLegacy = Object.keys(legacyMap || {}).map(d => String(d).slice(0,7)).filter(k => /^\d{4}-\d{2}$/.test(k));
+      occKeys = Array.from(new Set([...fromMonthly, ...fromLegacy]));
+    }catch(e){ occKeys = []; }
+
+    const moveKeys = (movesMonths || []).map(m=>m.key).filter(Boolean);
+    const currentKeys = Array.from(new Set([...moveKeys, ...occKeys]))
+      .filter(k => k && k !== "SIN-DATOS" && k !== "SIN-FECHA")
+      .sort((a,b)=>a.localeCompare(b));
+
+    // Grupo 1: Meses disponibles
     const optg1 = document.createElement("optgroup");
-    optg1.label = "Mes en curso (pegado)";
-    const currentKeys = movesMonths.map(m=>m.key);
+    optg1.label = "Meses disponibles";
     if(currentKeys.length){
-      for(const m of movesMonths){
+      for(const k of currentKeys){
         const opt = document.createElement("option");
-        opt.value = `CUR|${m.key}`;
-        opt.textContent = `${m.label}`;
+        opt.value = `CUR|${k}`;
+        const hasMoves = moveKeys.includes(k);
+        const hasOcc = occKeys.includes(k);
+        opt.textContent = `${monthLabel(k)}${hasOcc && !hasMoves ? " (ocupación)" : ""}`;
         optg1.appendChild(opt);
       }
     }else{
       const opt = document.createElement("option");
       opt.value = "CUR|SIN-DATOS";
-      opt.textContent = "Sin datos (pega Panel 3)";
+      opt.textContent = "Sin datos todavía";
       optg1.appendChild(opt);
     }
     selMonth.appendChild(optg1);
-
-    // Grupo 1.5: meses que tienen ocupación guardada, aunque no exista movimiento pegado.
-    // Esto evita que desaparezcan meses anteriores del gráfico de Ocupación.
-    const occKeys = getOccSavedMonthKeysForSelector().filter(k => !currentKeys.includes(k));
-    if(occKeys.length){
-      const optgOcc = document.createElement("optgroup");
-      optgOcc.label = "Meses con ocupación guardada";
-      for(const k of occKeys){
-        const opt = document.createElement("option");
-        opt.value = `CUR|${k}`;
-        opt.textContent = `${monthLabel(k)} (ocupación)`;
-        optgOcc.appendChild(opt);
-      }
-      selMonth.appendChild(optgOcc);
-    }
 
     // Grupo 2: Meses cerrados (snapshots)
     const snapKeys = Object.keys(ioSnaps || {}).sort((a,b)=>a.localeCompare(b));
@@ -2039,9 +2020,12 @@ function parseMoves(text){
     }
     selMonth.appendChild(optg2);
 
-    // default: último mes en curso si existe, si no el primero cerrado
-    if(currentKeys.length){
-      selMonth.value = `CUR|${movesMonths[movesMonths.length-1].key}`;
+    // Mantiene el mes seleccionado si aún existe; si no, usa el último mes disponible.
+    const availableValues = Array.from(selMonth.options).map(o=>o.value);
+    if(previousValue && availableValues.includes(previousValue)){
+      selMonth.value = previousValue;
+    }else if(currentKeys.length){
+      selMonth.value = `CUR|${currentKeys[currentKeys.length-1]}`;
     }else if(snapKeys.length){
       selMonth.value = `SNAP|${snapKeys[snapKeys.length-1]}`;
     }else{
@@ -3506,13 +3490,7 @@ function showInboundDetail(title, monthLabelText, rows){
     }
   }
 
-  function saveIOSnaps(){
-    try{
-      localStorage.setItem(LS_KEY_IO_SNAP, JSON.stringify(ioSnaps || {}));
-    }catch(e){
-      console.warn("No se pudo guardar ioSnapshots en Local Storage; se mantiene solo en memoria/Firebase.", e);
-    }
-  }
+  function saveIOSnaps(){ localStorage.setItem(LS_KEY_IO_SNAP, JSON.stringify(ioSnaps)); }
   function loadIOSnaps(){
     try{
       const raw = localStorage.getItem(LS_KEY_IO_SNAP);
@@ -4267,12 +4245,11 @@ Esta acción no se puede deshacer.`);
         ioManual = ioManualNow;
         ioSnaps = ioSnapsNow;
 
-        setLocalRaw(LS_KEY_STOCK, stockTextNow);
-        setLocalRaw(LS_KEY_MOVES, movesTextNow);
-        setLocalRaw(LS_KEY_MANUAL, JSON.stringify(manualNow));
-        setLocalRaw(LS_KEY_IO_MANUAL, JSON.stringify(ioManualNow));
-        // Puede ser muy pesado; si el navegador no tiene cuota, no debe tumbar el guardado en Firebase.
-        setLocalRaw(LS_KEY_IO_SNAP, JSON.stringify(ioSnapsNow || {}));
+        localStorage.setItem(LS_KEY_STOCK, stockTextNow);
+        localStorage.setItem(LS_KEY_MOVES, movesTextNow);
+        localStorage.setItem(LS_KEY_MANUAL, JSON.stringify(manualNow));
+        localStorage.setItem(LS_KEY_IO_MANUAL, JSON.stringify(ioManualNow));
+        localStorage.setItem(LS_KEY_IO_SNAP, JSON.stringify(ioSnapsNow));
 
         setPcStatus("Firebase: guardado ✓");
         alert("✅ Guardado en Firebase correctamente.\nLa data grande se guardó en chunks pequeños.");
@@ -4315,12 +4292,11 @@ Esta acción no se puede deshacer.`);
         ioManual = safeJsonParse(ioManualJsonCloud, {});
         ioSnaps = safeJsonParse(ioSnapsJsonCloud, {});
 
-        setLocalRaw(LS_KEY_STOCK, stockText);
-        setLocalRaw(LS_KEY_MOVES, movesText);
-        setLocalRaw(LS_KEY_MANUAL, JSON.stringify(manualOverrides));
-        setLocalRaw(LS_KEY_IO_MANUAL, JSON.stringify(ioManual || {}));
-        // Puede ser muy pesado; si el navegador no tiene cuota, no debe tumbar la carga desde Firebase.
-        setLocalRaw(LS_KEY_IO_SNAP, JSON.stringify(ioSnaps || {}));
+        localStorage.setItem(LS_KEY_STOCK, stockText);
+        localStorage.setItem(LS_KEY_MOVES, movesText);
+        localStorage.setItem(LS_KEY_MANUAL, JSON.stringify(manualOverrides));
+        localStorage.setItem(LS_KEY_IO_MANUAL, JSON.stringify(ioManual || {}));
+        localStorage.setItem(LS_KEY_IO_SNAP, JSON.stringify(ioSnaps || {}));
 
         if(occMonthlyCloud) setLocalRaw(typeof LS_KEY_OCC !== "undefined" ? LS_KEY_OCC : "capacityTools_occHistoryByMonth_v2", occMonthlyCloud);
         if(occLegacyCloud) setLocalRaw(typeof LS_KEY_OCC_LEGACY !== "undefined" ? LS_KEY_OCC_LEGACY : "capacityTools_occHistory_v1", occLegacyCloud);
