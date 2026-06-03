@@ -1170,6 +1170,61 @@
       </div>
     </div>
   </div>
+
+
+  <!-- Modal oculto: editor manual de ocupación -->
+  <div class="modal" id="modalOccAdmin">
+    <div class="modal-card" style="width:min(760px,100%);">
+      <div class="modal-head">
+        <div class="modal-title">⚙️ Editar ocupación manual</div>
+        <button class="btn danger sm" id="btnCloseOccAdmin" type="button">Cerrar</button>
+      </div>
+      <div class="modal-body">
+        <div class="hint" style="margin-top:0; margin-bottom:12px;">
+          Panel oculto. Atajo: <b>Ctrl + Shift + O</b>. Registra solo días puntuales de ocupación; no reemplaza data existente salvo que guardes el mismo día.
+        </div>
+        <div class="row" style="grid-template-columns: repeat(auto-fit, minmax(180px,1fr));">
+          <div>
+            <label>Mes</label>
+            <input id="admOccMonth" type="month" />
+          </div>
+          <div>
+            <label>Día</label>
+            <input id="admOccDate" type="date" />
+          </div>
+        </div>
+        <div class="row" style="grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); margin-top:10px;">
+          <div>
+            <label>% Ocupación</label>
+            <input id="admOccPct" type="number" min="0" max="100" step="0.01" placeholder="Ej: 72.54" />
+          </div>
+          <div>
+            <label>Pallets usados</label>
+            <input id="admOccPallets" type="number" min="0" step="1" placeholder="Ej: 457" />
+          </div>
+          <div>
+            <label>Pallets Productos</label>
+            <input id="admOccProductos" type="number" min="0" step="1" placeholder="Opcional" />
+          </div>
+          <div>
+            <label>Pallets Empaque</label>
+            <input id="admOccEmpaque" type="number" min="0" step="1" placeholder="Opcional" />
+          </div>
+        </div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
+          <button class="btn primary" id="btnAdmOccSave" type="button">Guardar día</button>
+          <button class="btn ghost" id="btnAdmOccLoad" type="button">Cargar día existente</button>
+          <button class="btn danger" id="btnAdmOccDelete" type="button">Eliminar día</button>
+        </div>
+        <div class="hint" id="admOccStatus" style="margin-top:12px; font-weight:800;">Estado: listo.</div>
+        <div style="margin-top:14px;">
+          <label>Días guardados del mes seleccionado</label>
+          <div id="admOccMonthList" class="detailBox" style="max-height:190px; overflow:auto; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px;">—</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 
 <script type="module">
@@ -4077,6 +4132,175 @@ Esta acción no se puede deshacer.`);
       try{ renderOccHistoryLocal(); }catch(err){ console.error(err); alert("❌ No se pudo cargar el histórico de ocupación (PC)."); }
     });
   }
+
+
+
+  // =========================
+  // Panel oculto: Editar ocupación manual
+  // Atajo: Ctrl + Shift + O
+  // =========================
+  const modalOccAdmin = document.getElementById("modalOccAdmin");
+  const btnCloseOccAdmin = document.getElementById("btnCloseOccAdmin");
+  const admOccMonth = document.getElementById("admOccMonth");
+  const admOccDate = document.getElementById("admOccDate");
+  const admOccPct = document.getElementById("admOccPct");
+  const admOccPallets = document.getElementById("admOccPallets");
+  const admOccProductos = document.getElementById("admOccProductos");
+  const admOccEmpaque = document.getElementById("admOccEmpaque");
+  const btnAdmOccSave = document.getElementById("btnAdmOccSave");
+  const btnAdmOccLoad = document.getElementById("btnAdmOccLoad");
+  const btnAdmOccDelete = document.getElementById("btnAdmOccDelete");
+  const admOccStatus = document.getElementById("admOccStatus");
+  const admOccMonthList = document.getElementById("admOccMonthList");
+
+  function admSetStatus(msg){ if(admOccStatus) admOccStatus.textContent = "Estado: " + msg; }
+
+  function openOccAdmin(){
+    if(!modalOccAdmin) return;
+    const ctx = getSelectedOccContext ? getSelectedOccContext() : {monthKey:getCurrentSystemMonthKey()};
+    const mk = ctx.monthKey || getCurrentSystemMonthKey();
+    if(admOccMonth) admOccMonth.value = mk;
+    if(admOccDate && !admOccDate.value) admOccDate.value = `${mk}-01`;
+    modalOccAdmin.classList.add("open");
+    admRefreshMonthList();
+  }
+  function closeOccAdmin(){ if(modalOccAdmin) modalOccAdmin.classList.remove("open"); }
+
+  if(btnCloseOccAdmin) btnCloseOccAdmin.addEventListener("click", closeOccAdmin);
+  if(modalOccAdmin) modalOccAdmin.addEventListener("click", (e)=>{ if(e.target===modalOccAdmin) closeOccAdmin(); });
+
+  document.addEventListener("keydown", (e)=>{
+    const key = String(e.key || "").toLowerCase();
+    if(e.ctrlKey && e.shiftKey && key === "o"){
+      e.preventDefault();
+      openOccAdmin();
+    }
+  });
+
+  function admMonthKey(){
+    const mk = admOccMonth && admOccMonth.value ? String(admOccMonth.value) : getCurrentSystemMonthKey();
+    return /^\d{4}-\d{2}$/.test(mk) ? mk : getCurrentSystemMonthKey();
+  }
+  function admDateKey(){
+    const mk = admMonthKey();
+    let d = admOccDate && admOccDate.value ? String(admOccDate.value) : `${mk}-01`;
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(d)) d = `${mk}-01`;
+    if(!d.startsWith(mk + "-")) d = `${mk}-${d.slice(8,10) || "01"}`;
+    return d;
+  }
+  function admNumber(el, required=false){
+    const raw = el && el.value != null ? String(el.value).replace(",", ".").trim() : "";
+    if(raw === "") return required ? NaN : null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : NaN;
+  }
+
+  function admRefreshMonthList(){
+    const mk = admMonthKey();
+    if(admOccDate && (!admOccDate.value || !admOccDate.value.startsWith(mk + "-"))) admOccDate.value = `${mk}-01`;
+    const dates = getOccMonthBucket(mk, "CUR") || {};
+    const keys = Object.keys(dates).sort();
+    if(!admOccMonthList) return;
+    if(!keys.length){
+      admOccMonthList.textContent = `Sin días guardados en ${monthLabel(mk)}.`;
+      return;
+    }
+    admOccMonthList.innerHTML = keys.map(k=>{
+      const r = dates[k] || {};
+      const pct = Number(r.pct);
+      const pal = Number(r.palletsUsed);
+      return `<div style="padding:6px 0;border-bottom:1px solid var(--border);cursor:pointer;" data-date="${k}">` +
+        `${k} → ${Number.isFinite(pct)?pct.toFixed(2):"—"}% • pallets ${Number.isFinite(pal)?Math.round(pal):"—"}` +
+      `</div>`;
+    }).join("");
+    Array.from(admOccMonthList.querySelectorAll("[data-date]")).forEach(el=>{
+      el.addEventListener("click", ()=>{
+        if(admOccDate) admOccDate.value = el.getAttribute("data-date") || "";
+        admLoadDay();
+      });
+    });
+  }
+
+  function admLoadDay(){
+    const mk = admMonthKey();
+    const d = admDateKey();
+    const dates = getOccMonthBucket(mk, "CUR") || {};
+    const r = dates[d];
+    if(!r){ admSetStatus(`no existe data para ${d}. Puedes registrarla manualmente.`); return false; }
+    if(admOccPct) admOccPct.value = Number.isFinite(Number(r.pct)) ? Number(r.pct).toFixed(2) : "";
+    if(admOccPallets) admOccPallets.value = Number.isFinite(Number(r.palletsUsed)) ? String(Math.round(Number(r.palletsUsed))) : "";
+    if(admOccProductos) admOccProductos.value = r.productos == null ? "" : String(Math.round(Number(r.productos)||0));
+    if(admOccEmpaque) admOccEmpaque.value = r.empaque == null ? "" : String(Math.round(Number(r.empaque)||0));
+    admSetStatus(`día cargado: ${d}.`);
+    return true;
+  }
+
+  async function admSaveOccMonthlyToFirebase(){
+    try{
+      if(typeof ensureFirebaseLogin !== "function" || typeof saveDatasetToFirebase !== "function") return;
+      const fb = await ensureFirebaseLogin();
+      const userEmail = (fb.auth.currentUser && fb.auth.currentUser.email) || "";
+      const raw = localStorage.getItem(LS_KEY_OCC) || "{}";
+      const datasetInfo = await saveDatasetToFirebase(fb, "occ_monthly_json", raw, userEmail);
+      await fb.setDoc(fb.doc(fb.db, "capacity_tools", "main_index"), {
+        datasets: { occ_monthly_json: datasetInfo },
+        updatedAt: fb.serverTimestamp(),
+        updatedBy: userEmail
+      }, { merge: true });
+      admSetStatus("guardado en PC y Firebase ✓");
+    }catch(err){
+      console.warn("No se pudo guardar ocupación manual en Firebase", err);
+      admSetStatus("guardado en PC, pero Firebase falló. Usa Guardar Firebase luego.");
+    }
+  }
+
+  async function admSaveDay(){
+    const mk = admMonthKey();
+    const d = admDateKey();
+    const pct = admNumber(admOccPct, true);
+    const palletsUsed = admNumber(admOccPallets, true);
+    const productos = admNumber(admOccProductos, false);
+    const empaque = admNumber(admOccEmpaque, false);
+    if(!Number.isFinite(pct) || pct < 0 || pct > 100){ alert("Ingresa un % de ocupación válido entre 0 y 100."); return; }
+    if(!Number.isFinite(palletsUsed) || palletsUsed < 0){ alert("Ingresa pallets usados válido."); return; }
+
+    const map = loadOccMonthlyMap();
+    map[mk] = map[mk] || { dates:{} };
+    map[mk].dates = map[mk].dates || {};
+    const exists = !!map[mk].dates[d];
+    if(exists){
+      const ok = confirm(`Ya existe ocupación para ${d}. ¿Deseas reemplazar solo este día?`);
+      if(!ok) return;
+    }
+    const row = { pct, palletsUsed };
+    if(productos !== null && Number.isFinite(productos)) row.productos = productos;
+    if(empaque !== null && Number.isFinite(empaque)) row.empaque = empaque;
+    map[mk].dates[d] = row;
+    saveOccMonthlyMap(map);
+    admRefreshMonthList();
+    if(modalOcc && modalOcc.classList.contains("open")) { try{ renderOccHistoryLocal(); }catch(e){} }
+    await admSaveOccMonthlyToFirebase();
+  }
+
+  async function admDeleteDay(){
+    const mk = admMonthKey();
+    const d = admDateKey();
+    const map = loadOccMonthlyMap();
+    if(!map[mk] || !map[mk].dates || !map[mk].dates[d]){ admSetStatus(`no hay data para eliminar en ${d}.`); return; }
+    if(!confirm(`¿Eliminar la ocupación guardada de ${d}?`)) return;
+    delete map[mk].dates[d];
+    saveOccMonthlyMap(map);
+    admRefreshMonthList();
+    if(modalOcc && modalOcc.classList.contains("open")) { try{ renderOccHistoryLocal(); }catch(e){} }
+    await admSaveOccMonthlyToFirebase();
+  }
+
+  if(admOccMonth) admOccMonth.addEventListener("change", admRefreshMonthList);
+  if(admOccDate) admOccDate.addEventListener("change", admLoadDay);
+  if(btnAdmOccLoad) btnAdmOccLoad.addEventListener("click", admLoadDay);
+  if(btnAdmOccSave) btnAdmOccSave.addEventListener("click", admSaveDay);
+  if(btnAdmOccDelete) btnAdmOccDelete.addEventListener("click", admDeleteDay);
+
 
   if(btnExportOccPng && occLine){
     btnExportOccPng.addEventListener("click", ()=>{
