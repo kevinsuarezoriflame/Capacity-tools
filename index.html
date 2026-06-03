@@ -1960,42 +1960,23 @@ function parseMoves(text){
   function rebuildMonthSelector(){
     const selMonth = document.getElementById("selMonth");
     if(!selMonth) return;
-
-    const previousValue = selMonth.value || "";
     selMonth.innerHTML = "";
 
-    // ✅ Meses vivos: movimientos pegados + historial de ocupación guardado.
-    // Antes solo salían meses del Panel 3; por eso ocupación antigua quedaba invisible.
-    let occKeys = [];
-    try{
-      const occMap = (typeof loadOccMonthlyMap === "function") ? loadOccMonthlyMap() : {};
-      const legacyMap = (typeof readOccLegacyMap === "function") ? readOccLegacyMap() : {};
-      const fromMonthly = Object.keys(occMap || {}).filter(k => occMap[k] && occMap[k].dates && Object.keys(occMap[k].dates).length);
-      const fromLegacy = Object.keys(legacyMap || {}).map(d => String(d).slice(0,7)).filter(k => /^\d{4}-\d{2}$/.test(k));
-      occKeys = Array.from(new Set([...fromMonthly, ...fromLegacy]));
-    }catch(e){ occKeys = []; }
-
-    const moveKeys = (movesMonths || []).map(m=>m.key).filter(Boolean);
-    const currentKeys = Array.from(new Set([...moveKeys, ...occKeys]))
-      .filter(k => k && k !== "SIN-DATOS" && k !== "SIN-FECHA")
-      .sort((a,b)=>a.localeCompare(b));
-
-    // Grupo 1: Meses disponibles
+    // Grupo 1: Mes en curso (pegado)
     const optg1 = document.createElement("optgroup");
-    optg1.label = "Meses disponibles";
+    optg1.label = "Mes en curso (pegado)";
+    const currentKeys = movesMonths.map(m=>m.key);
     if(currentKeys.length){
-      for(const k of currentKeys){
+      for(const m of movesMonths){
         const opt = document.createElement("option");
-        opt.value = `CUR|${k}`;
-        const hasMoves = moveKeys.includes(k);
-        const hasOcc = occKeys.includes(k);
-        opt.textContent = `${monthLabel(k)}${hasOcc && !hasMoves ? " (ocupación)" : ""}`;
+        opt.value = `CUR|${m.key}`;
+        opt.textContent = `${m.label}`;
         optg1.appendChild(opt);
       }
     }else{
       const opt = document.createElement("option");
       opt.value = "CUR|SIN-DATOS";
-      opt.textContent = "Sin datos todavía";
+      opt.textContent = "Sin datos (pega Panel 3)";
       optg1.appendChild(opt);
     }
     selMonth.appendChild(optg1);
@@ -2020,12 +2001,9 @@ function parseMoves(text){
     }
     selMonth.appendChild(optg2);
 
-    // Mantiene el mes seleccionado si aún existe; si no, usa el último mes disponible.
-    const availableValues = Array.from(selMonth.options).map(o=>o.value);
-    if(previousValue && availableValues.includes(previousValue)){
-      selMonth.value = previousValue;
-    }else if(currentKeys.length){
-      selMonth.value = `CUR|${currentKeys[currentKeys.length-1]}`;
+    // default: último mes en curso si existe, si no el primero cerrado
+    if(currentKeys.length){
+      selMonth.value = `CUR|${movesMonths[movesMonths.length-1].key}`;
     }else if(snapKeys.length){
       selMonth.value = `SNAP|${snapKeys[snapKeys.length-1]}`;
     }else{
@@ -2298,13 +2276,25 @@ for(const r of rows){
     let monthKey = key || "SIN-FECHA";
     let rows = [];
 
+    let snap = null;
+    let snapshotDashboardOnly = false;
+
     if(isSnap){
-      const snap = ioSnaps[monthKey];
+      snap = ioSnaps[monthKey];
       if(!snap){
         kpisWrap.innerHTML = `<div class="kpi">No hay snapshot para ${monthLabel(monthKey)}</div>`;
         return;
       }
-      rows = snap.rows.map(min => inflateMoveRow(min, monthKey));
+
+      // Nuevo modo liviano: guarda SOLO dashboard/KPIs, no toda la data base.
+      if(snap.metrics && typeof snap.metrics === "object"){
+        snapshotDashboardOnly = true;
+        rows = [];
+      }else{
+        // Compatibilidad con cierres antiguos que sí guardaban filas.
+        rows = Array.isArray(snap.rows) ? snap.rows.map(min => inflateMoveRow(min, monthKey)) : [];
+      }
+
       // en snap usamos taggedUnits del snapshot (congelado)
       ioManual[monthKey] = ioManual[monthKey] || { taggedUnits:0, taggedUnitsQ1:0, taggedUnitsQ2:0, importPallets:[] };
       ioManual[monthKey].taggedUnits = snap.taggedUnits || 0;
@@ -2314,11 +2304,14 @@ for(const r of rows){
       rows = movesByMonth.get(monthKey) || [];
     }
 
-    const m = computeIOMetrics(rows, monthKey);
+    const emptyDet = { inbound_air:[], inbound_sea:[], inbound_compra_local:[], inbound_armados:[], inbound_desarmados:[], outbound_pl:[] };
+    const m = snapshotDashboardOnly
+      ? { ...snap.metrics, det: emptyDet }
+      : computeIOMetrics(rows, monthKey);
 
     // quincenas (para facturación): dentro del mes seleccionado
-    const q1Import = computeImportUnitsByDayRange(rows, 1, 15);
-    const q2Import = computeImportUnitsByDayRange(rows, 16, 31);
+    const q1Import = snapshotDashboardOnly ? Number(snap.quincenas?.bulk_units_in?.q1 || 0) : computeImportUnitsByDayRange(rows, 1, 15);
+    const q2Import = snapshotDashboardOnly ? Number(snap.quincenas?.bulk_units_in?.q2 || 0) : computeImportUnitsByDayRange(rows, 16, 31);
 
     const kpis = [
       { id:"in_air", label:"✈️ Unidades Importación (AIR)", value: m.air, sub:"From=inbound & Description contiene AIR", detailKey:"inbound_air" },
@@ -2407,8 +2400,8 @@ for(const r of rows){
         const subEl = div.querySelector(".sub");
 
         const total = Number(k.value)||0;
-        const v1 = Number(computeMetricByDayRange(rows, 1, 15, k.id, monthKey))||0;
-        const v2 = Number(computeMetricByDayRange(rows, 16, 31, k.id, monthKey))||0;
+        const v1 = snapshotDashboardOnly ? Number(snap.quincenas?.[k.id]?.q1 || 0) : (Number(computeMetricByDayRange(rows, 1, 15, k.id, monthKey))||0);
+        const v2 = snapshotDashboardOnly ? Number(snap.quincenas?.[k.id]?.q2 || 0) : (Number(computeMetricByDayRange(rows, 16, 31, k.id, monthKey))||0);
 
         function labelFor(mode){
           const base = String(k.label || '').replace(/^[^\w\d]+\s*/, '').trim();
@@ -2550,7 +2543,7 @@ for(const r of rows){
 
     // Botón de gráfico general en header
     if(btnOpenOutboundChart){
-      btnOpenOutboundChart.disabled = rows.length===0;
+      btnOpenOutboundChart.disabled = (snapshotDashboardOnly ? !(snap.outboundSeries && snap.outboundSeries.length) : rows.length===0);
       btnOpenOutboundChart.onclick = ()=> openOutboundModal(monthKey, rows);
     }
 
@@ -2566,13 +2559,44 @@ for(const r of rows){
         const taggedUnits = Number(manClose.taggedUnits||0);
         const taggedUnitsQ1 = Number(manClose.taggedUnitsQ1||0);
         const taggedUnitsQ2 = Number(manClose.taggedUnitsQ2||0);
-        const minRows = rows.map(r=> deflateMoveRow(r));
+
+        // Cierre liviano: guarda SOLO los números del dashboard y la serie diaria del gráfico.
+        // No guarda rows/base completa para evitar llenar Local Storage/Firebase.
+        const mClose = computeIOMetrics(rows, monthKey);
+        const outboundSeries = groupOutboundByDay(mClose.det.outbound_pl || []);
+        const quincenaIdsClose = ["in_air","in_sea","in_arm","in_des","in_tag","bulk_units_in","bulk_units_out"];
+        const quincenas = {};
+        for(const id of quincenaIdsClose){
+          quincenas[id] = {
+            q1: Number(computeMetricByDayRange(rows, 1, 15, id, monthKey)) || 0,
+            q2: Number(computeMetricByDayRange(rows, 16, 31, id, monthKey)) || 0
+          };
+        }
+
         ioSnaps[monthKey] = {
+          version: "dashboard_only_v1",
           createdAt: new Date().toISOString(),
           taggedUnits,
           taggedUnitsQ1,
           taggedUnitsQ2,
-          rows: minRows
+          metrics: {
+            air: mClose.air,
+            sea: mClose.sea,
+            compraLocal: mClose.compraLocal,
+            armados: mClose.armados,
+            desarmados: mClose.desarmados,
+            importUnits: mClose.importUnits,
+            palletsInbound: mClose.palletsInbound,
+            boxesInbound: mClose.boxesInbound,
+            outboundUnits: mClose.outboundUnits,
+            palletsOutbound: mClose.palletsOutbound,
+            boxesOutbound: mClose.boxesOutbound,
+            taggedUnits,
+            taggedUnitsQ1,
+            taggedUnitsQ2
+          },
+          quincenas,
+          outboundSeries
         };
         saveIOSnaps();
 
@@ -2767,13 +2791,15 @@ function showInboundDetail(title, monthLabelText, rows){
   // ✅ 2) Modal gráfico Outbound (por día)
   function openOutboundModal(monthKey, rows){
     if(!modalOutbound || !canvasOutbound) return;
-    const m = computeIOMetrics(rows, monthKey);
+    const snap = ioSnaps && ioSnaps[monthKey] ? ioSnaps[monthKey] : null;
+    const useSnapshotSeries = snap && snap.metrics && Array.isArray(snap.outboundSeries) && (!rows || rows.length===0);
+    const m = useSnapshotSeries ? { ...snap.metrics, det:{ outbound_pl:[] } } : computeIOMetrics(rows, monthKey);
 
     // quincenas (para facturación): dentro del mes seleccionado
-    const q1Import = computeImportUnitsByDayRange(rows, 1, 15);
-    const q2Import = computeImportUnitsByDayRange(rows, 16, 31);
+    const q1Import = useSnapshotSeries ? Number(snap.quincenas?.bulk_units_in?.q1 || 0) : computeImportUnitsByDayRange(rows, 1, 15);
+    const q2Import = useSnapshotSeries ? Number(snap.quincenas?.bulk_units_in?.q2 || 0) : computeImportUnitsByDayRange(rows, 16, 31);
     const outRows = m.det.outbound_pl || [];
-    const series = groupOutboundByDay(outRows);
+    const series = useSnapshotSeries ? snap.outboundSeries : groupOutboundByDay(outRows);
 
     modalMonthLbl.textContent = monthLabel(monthKey);
     modalOutbound.classList.add("open");
@@ -3490,7 +3516,14 @@ function showInboundDetail(title, monthLabelText, rows){
     }
   }
 
-  function saveIOSnaps(){ localStorage.setItem(LS_KEY_IO_SNAP, JSON.stringify(ioSnaps)); }
+  function saveIOSnaps(){
+    try{
+      localStorage.setItem(LS_KEY_IO_SNAP, JSON.stringify(ioSnaps));
+    }catch(e){
+      console.error("No se pudo guardar snapshot liviano", e);
+      alert("⚠️ No se pudo guardar el cierre. El almacenamiento del navegador está lleno. Borra cierres antiguos pesados o guarda en Firebase.");
+    }
+  }
   function loadIOSnaps(){
     try{
       const raw = localStorage.getItem(LS_KEY_IO_SNAP);
