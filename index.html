@@ -1957,6 +1957,29 @@ function parseMoves(text){
     rebuildMonthSelector();
   }
 
+  function getOccSavedMonthKeysForSelector(){
+    const keys = new Set();
+    try{
+      const raw = localStorage.getItem("capacityTools_occHistoryByMonth_v2");
+      const obj = raw ? JSON.parse(raw) : {};
+      Object.keys(obj || {}).forEach(k=>{
+        if(/^\d{4}-\d{2}$/.test(k) && obj[k] && obj[k].dates && Object.keys(obj[k].dates).length){
+          keys.add(k);
+        }
+      });
+    }catch(e){}
+    try{
+      const raw = localStorage.getItem("capacityTools_occSnapshots_v1");
+      const obj = raw ? JSON.parse(raw) : {};
+      Object.keys(obj || {}).forEach(k=>{
+        if(/^\d{4}-\d{2}$/.test(k) && obj[k] && obj[k].dates && Object.keys(obj[k].dates).length){
+          keys.add(k);
+        }
+      });
+    }catch(e){}
+    return Array.from(keys).sort((a,b)=>a.localeCompare(b));
+  }
+
   function rebuildMonthSelector(){
     const selMonth = document.getElementById("selMonth");
     if(!selMonth) return;
@@ -1980,6 +2003,21 @@ function parseMoves(text){
       optg1.appendChild(opt);
     }
     selMonth.appendChild(optg1);
+
+    // Grupo 1.5: meses que tienen ocupación guardada, aunque no exista movimiento pegado.
+    // Esto evita que desaparezcan meses anteriores del gráfico de Ocupación.
+    const occKeys = getOccSavedMonthKeysForSelector().filter(k => !currentKeys.includes(k));
+    if(occKeys.length){
+      const optgOcc = document.createElement("optgroup");
+      optgOcc.label = "Meses con ocupación guardada";
+      for(const k of occKeys){
+        const opt = document.createElement("option");
+        opt.value = `CUR|${k}`;
+        opt.textContent = `${monthLabel(k)} (ocupación)`;
+        optgOcc.appendChild(opt);
+      }
+      selMonth.appendChild(optgOcc);
+    }
 
     // Grupo 2: Meses cerrados (snapshots)
     const snapKeys = Object.keys(ioSnaps || {}).sort((a,b)=>a.localeCompare(b));
@@ -3468,7 +3506,13 @@ function showInboundDetail(title, monthLabelText, rows){
     }
   }
 
-  function saveIOSnaps(){ localStorage.setItem(LS_KEY_IO_SNAP, JSON.stringify(ioSnaps)); }
+  function saveIOSnaps(){
+    try{
+      localStorage.setItem(LS_KEY_IO_SNAP, JSON.stringify(ioSnaps || {}));
+    }catch(e){
+      console.warn("No se pudo guardar ioSnapshots en Local Storage; se mantiene solo en memoria/Firebase.", e);
+    }
+  }
   function loadIOSnaps(){
     try{
       const raw = localStorage.getItem(LS_KEY_IO_SNAP);
@@ -4223,11 +4267,12 @@ Esta acción no se puede deshacer.`);
         ioManual = ioManualNow;
         ioSnaps = ioSnapsNow;
 
-        localStorage.setItem(LS_KEY_STOCK, stockTextNow);
-        localStorage.setItem(LS_KEY_MOVES, movesTextNow);
-        localStorage.setItem(LS_KEY_MANUAL, JSON.stringify(manualNow));
-        localStorage.setItem(LS_KEY_IO_MANUAL, JSON.stringify(ioManualNow));
-        localStorage.setItem(LS_KEY_IO_SNAP, JSON.stringify(ioSnapsNow));
+        setLocalRaw(LS_KEY_STOCK, stockTextNow);
+        setLocalRaw(LS_KEY_MOVES, movesTextNow);
+        setLocalRaw(LS_KEY_MANUAL, JSON.stringify(manualNow));
+        setLocalRaw(LS_KEY_IO_MANUAL, JSON.stringify(ioManualNow));
+        // Puede ser muy pesado; si el navegador no tiene cuota, no debe tumbar el guardado en Firebase.
+        setLocalRaw(LS_KEY_IO_SNAP, JSON.stringify(ioSnapsNow || {}));
 
         setPcStatus("Firebase: guardado ✓");
         alert("✅ Guardado en Firebase correctamente.\nLa data grande se guardó en chunks pequeños.");
@@ -4270,11 +4315,12 @@ Esta acción no se puede deshacer.`);
         ioManual = safeJsonParse(ioManualJsonCloud, {});
         ioSnaps = safeJsonParse(ioSnapsJsonCloud, {});
 
-        localStorage.setItem(LS_KEY_STOCK, stockText);
-        localStorage.setItem(LS_KEY_MOVES, movesText);
-        localStorage.setItem(LS_KEY_MANUAL, JSON.stringify(manualOverrides));
-        localStorage.setItem(LS_KEY_IO_MANUAL, JSON.stringify(ioManual || {}));
-        localStorage.setItem(LS_KEY_IO_SNAP, JSON.stringify(ioSnaps || {}));
+        setLocalRaw(LS_KEY_STOCK, stockText);
+        setLocalRaw(LS_KEY_MOVES, movesText);
+        setLocalRaw(LS_KEY_MANUAL, JSON.stringify(manualOverrides));
+        setLocalRaw(LS_KEY_IO_MANUAL, JSON.stringify(ioManual || {}));
+        // Puede ser muy pesado; si el navegador no tiene cuota, no debe tumbar la carga desde Firebase.
+        setLocalRaw(LS_KEY_IO_SNAP, JSON.stringify(ioSnaps || {}));
 
         if(occMonthlyCloud) setLocalRaw(typeof LS_KEY_OCC !== "undefined" ? LS_KEY_OCC : "capacityTools_occHistoryByMonth_v2", occMonthlyCloud);
         if(occLegacyCloud) setLocalRaw(typeof LS_KEY_OCC_LEGACY !== "undefined" ? LS_KEY_OCC_LEGACY : "capacityTools_occHistory_v1", occLegacyCloud);
