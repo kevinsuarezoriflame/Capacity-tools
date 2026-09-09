@@ -1525,11 +1525,12 @@ let stockMap = new Map();
 
   btnProcess.addEventListener("click", ()=>{
     stockText = txtStock.value || "";
-    localStorage.setItem(LS_KEY_STOCK, stockText);
+    setLocalRaw(LS_KEY_STOCK, stockText);
 
+    // Panel 3 puede superar fácilmente la cuota de localStorage.
+    // Se mantiene en memoria y se respalda en Firebase; NO se guarda localmente.
     if(txtMoves){
       movesText = txtMoves.value || "";
-      localStorage.setItem(LS_KEY_MOVES, movesText);
     }
 
     parseStock(stockText);
@@ -1718,7 +1719,7 @@ let stockMap = new Map();
         const reader = new FileReader();
         reader.onload = ()=>{
           const dataUrl = String(reader.result || "");
-          localStorage.setItem(LS_KEY_BG, dataUrl);
+          setLocalRaw(LS_KEY_BG, dataUrl);
           applyAisleBg(dataUrl);
           alert("✅ Foto del pasillo aplicada.");
         };
@@ -3538,7 +3539,7 @@ function showInboundDetail(title, monthLabelText, rows){
     return "⬜ Vacío";
   }
 
-  function saveManual(){ localStorage.setItem(LS_KEY_MANUAL, JSON.stringify(manualOverrides)); }
+  function saveManual(){ setLocalRaw(LS_KEY_MANUAL, JSON.stringify(manualOverrides)); }
   function loadManual(){
     try{
       const raw = localStorage.getItem(LS_KEY_MANUAL);
@@ -3551,7 +3552,7 @@ function showInboundDetail(title, monthLabelText, rows){
     }
   }
 
-  function saveIOM(){ localStorage.setItem(LS_KEY_IO_MANUAL, JSON.stringify(ioManual)); }
+  function saveIOM(){ setLocalRaw(LS_KEY_IO_MANUAL, JSON.stringify(ioManual)); }
   function loadIOM(){
     try{
       const raw = localStorage.getItem(LS_KEY_IO_MANUAL);
@@ -3573,7 +3574,7 @@ function showInboundDetail(title, monthLabelText, rows){
 
   function saveIOSnaps(){
     try{
-      localStorage.setItem(LS_KEY_IO_SNAP, JSON.stringify(ioSnaps));
+      setLocalRaw(LS_KEY_IO_SNAP, JSON.stringify(ioSnaps));
     }catch(e){
       console.error("No se pudo guardar snapshot liviano", e);
       alert("⚠️ No se pudo guardar el cierre. El almacenamiento del navegador está lleno. Borra cierres antiguos pesados o guarda en Firebase.");
@@ -4354,7 +4355,7 @@ Esta acción no se puede deshacer.`);
 
   if(btnCloudSave){
     btnCloudSave.textContent = "💾 Guardar Firebase";
-    btnCloudSave.title = "Guarda stock, movimientos, manuales, ajustes y ocupación en Firebase + respaldo local";
+    btnCloudSave.title = "Guarda stock, movimientos, manuales, ajustes y ocupación en Firebase; el reporte grande de movimientos no se duplica en localStorage";
   }
   if(btnCloudLoad){
     btnCloudLoad.textContent = "📥 Cargar Firebase";
@@ -4517,18 +4518,23 @@ Esta acción no se puede deshacer.`);
           updatedBy: userEmail
         }, { merge: true });
 
-        // Respaldo local inmediato
+        // Respaldo local ligero.
+        // IMPORTANTE: moves_text ya quedó guardado en Firebase por chunks; no se duplica
+        // en localStorage porque puede exceder la cuota del navegador.
         stockText = stockTextNow;
         movesText = movesTextNow;
         manualOverrides = manualNow;
         ioManual = ioManualNow;
         ioSnaps = ioSnapsNow;
 
-        localStorage.setItem(LS_KEY_STOCK, stockTextNow);
-        localStorage.setItem(LS_KEY_MOVES, movesTextNow);
-        localStorage.setItem(LS_KEY_MANUAL, JSON.stringify(manualNow));
-        localStorage.setItem(LS_KEY_IO_MANUAL, JSON.stringify(ioManualNow));
-        localStorage.setItem(LS_KEY_IO_SNAP, JSON.stringify(ioSnapsNow));
+        // Limpia únicamente el respaldo local antiguo del Panel 3 para liberar espacio.
+        // NO toca ioSnaps / meses cerrados.
+        try{ localStorage.removeItem(LS_KEY_MOVES); }catch(e){}
+
+        setLocalRaw(LS_KEY_STOCK, stockTextNow);
+        setLocalRaw(LS_KEY_MANUAL, JSON.stringify(manualNow));
+        setLocalRaw(LS_KEY_IO_MANUAL, JSON.stringify(ioManualNow));
+        setLocalRaw(LS_KEY_IO_SNAP, JSON.stringify(ioSnapsNow));
 
         setPcStatus("Firebase: guardado ✓");
         alert("✅ Guardado en Firebase correctamente.\nLa data grande se guardó en chunks pequeños.");
@@ -4571,11 +4577,13 @@ Esta acción no se puede deshacer.`);
         ioManual = safeJsonParse(ioManualJsonCloud, {});
         ioSnaps = safeJsonParse(ioSnapsJsonCloud, {});
 
-        localStorage.setItem(LS_KEY_STOCK, stockText);
-        localStorage.setItem(LS_KEY_MOVES, movesText);
-        localStorage.setItem(LS_KEY_MANUAL, JSON.stringify(manualOverrides));
-        localStorage.setItem(LS_KEY_IO_MANUAL, JSON.stringify(ioManual || {}));
-        localStorage.setItem(LS_KEY_IO_SNAP, JSON.stringify(ioSnaps || {}));
+        // Respaldo local ligero: Panel 3 permanece en memoria + Firebase.
+        // Eliminamos cualquier copia local antigua del reporte grande para evitar QuotaExceededError.
+        try{ localStorage.removeItem(LS_KEY_MOVES); }catch(e){}
+        setLocalRaw(LS_KEY_STOCK, stockText);
+        setLocalRaw(LS_KEY_MANUAL, JSON.stringify(manualOverrides));
+        setLocalRaw(LS_KEY_IO_MANUAL, JSON.stringify(ioManual || {}));
+        setLocalRaw(LS_KEY_IO_SNAP, JSON.stringify(ioSnaps || {}));
 
         if(occMonthlyCloud) setLocalRaw(typeof LS_KEY_OCC !== "undefined" ? LS_KEY_OCC : "capacityTools_occHistoryByMonth_v2", occMonthlyCloud);
         if(occLegacyCloud) setLocalRaw(typeof LS_KEY_OCC_LEGACY !== "undefined" ? LS_KEY_OCC_LEGACY : "capacityTools_occHistory_v1", occLegacyCloud);
