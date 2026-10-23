@@ -754,10 +754,10 @@
           </div>
 
           <div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;">
-            <button class="btn primary" id="btnProcess">Procesar / Actualizar</button>
-            <button class="btn sm" id="btnCloudSave" title="Guarda stock, movimientos y manuales en esta PC">💾 Guardar PC</button>
-            <button class="btn sm" id="btnCloudLoad" title="Carga el último estado guardado en esta PC">📥 Cargar PC</button>
-            <span class="sub" id="cloudStatus" style="align-self:center; font-weight:800; color:var(--muted);">PC: —</span>
+            <button class="btn primary" id="btnProcess" style="display:none">Procesar / Actualizar</button>
+            <button class="btn sm" id="btnCloudSave" style="display:none" title="Respaldo automático">💾 Guardar PC</button>
+            <button class="btn sm" id="btnCloudLoad" style="display:none" title="Carga automática">📥 Cargar PC</button>
+            <span class="sub" id="cloudStatus" style="align-self:center; font-weight:800; color:var(--muted);">Iniciando carga automática...</span>
             <button class="btn" id="btnGotoLayout">Ir al Layout</button>
           </div>
         </div>
@@ -1232,8 +1232,8 @@
 
   import {
     getAuth,
-    GoogleAuthProvider,
-    signInWithPopup
+    signInAnonymously,
+    onAuthStateChanged
   } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
 
   import {
@@ -1257,13 +1257,12 @@
 
   const auth = getAuth(app);
   const db = getFirestore(app);
-  const provider = new GoogleAuthProvider();
 
   window.ctFirebase = {
     auth,
     db,
-    provider,
-    signInWithPopup,
+    signInAnonymously,
+    onAuthStateChanged,
     doc,
     getDoc,
     setDoc,
@@ -4338,282 +4337,261 @@ Esta acción no se puede deshacer.`);
       }
     });
   }
-  // =========================
-  // Firebase + respaldo local ROBUSTO
-  // Guarda TODO en chunks pequeños para evitar el límite de 1 MB por documento.
-  // Firestore usado:
-  // capacity_tools/main_index
-  // capacity_tools/{dataset}_meta
-  // capacity_tools/{dataset}_chunk_000..N
-  // =========================
+  // Sincronización inteligente v3: IndexedDB (datos grandes) + Firestore selectivo.
+  // Compatible con los documentos cloud existentes, sin borrar información histórica.
   const btnCloudSave = document.getElementById("btnCloudSave");
   const btnCloudLoad = document.getElementById("btnCloudLoad");
   const cloudStatus = document.getElementById("cloudStatus");
-
-  // Mantener bastante bajo. Firestore permite 1MB por documento, pero el overhead cuenta.
   const FIREBASE_CHUNK_SIZE = 280000;
-
-  if(btnCloudSave){
-    btnCloudSave.textContent = "💾 Guardar Firebase";
-    btnCloudSave.title = "Guarda stock, movimientos, manuales, ajustes y ocupación en Firebase; el reporte grande de movimientos no se duplica en localStorage";
+  const CT_DIRTY_KEY = "capacityTools_pendingCloud_v3";
+  const CT_LOCAL_STAMP = "capacityTools_localStamp_v3";
+  const CT_CLOUD_STAMP = "capacityTools_cloudStamp_v3";
+  const CT_DATASETS = ["stock_text", "moves_text", "manual_json", "io_manual_json", "io_snaps_json", "occ_monthly_json", "occ_legacy_json", "occ_snaps_json", "aisle_bg"];
+  let ctLoading = false, ctProcessing = false, ctSaveTimer = null, ctCloudTimer = null;
+  let ctInFlight = false, ctNeedsAnotherSync = false, ctBooted = false;
+  let ctIdbPromise;
+  let ctLastLocalSignature = "";
+  let ctManualLoginRequested = false;
+  let ctHasRestoredData = false;
+  let ctRemoteVerified = false;
+  const ctStatus = (t) => { if(cloudStatus) cloudStatus.textContent = t; };
+  function safeJsonStringify(v, fallback){try{return JSON.stringify(v ?? fallback ?? {});}catch(e){return JSON.stringify(fallback ?? {});}}
+  function safeJsonParse(v, fallback){try{return !v ? fallback : JSON.parse(v);}catch(e){return fallback;}}
+  const getLocalRaw = k => {try{return localStorage.getItem(k)||"";}catch(e){return "";}};
+  const setLocalRaw = (k,v) => {try{localStorage.setItem(k, String(v??""));return true;}catch(e){console.warn("Storage:",k,e);return false;}};
+  function ctOpenDB(){
+    if(ctIdbPromise) return ctIdbPromise;
+    ctIdbPromise = new Promise((resolve,reject)=>{
+      const req=indexedDB.open("capacityTools_offline_v3",1);
+      req.onupgradeneeded=()=>{if(!req.result.objectStoreNames.contains("datasets"))req.result.createObjectStore("datasets");};
+      req.onsuccess=()=>resolve(req.result); req.onerror=()=>reject(req.error);
+    }); return ctIdbPromise;
   }
-  if(btnCloudLoad){
-    btnCloudLoad.textContent = "📥 Cargar Firebase";
-    btnCloudLoad.title = "Carga el último respaldo guardado en Firebase";
+  async function ctDbGet(key){const db=await ctOpenDB();return new Promise((resolve,reject)=>{const tx=db.transaction("datasets","readonly");const req=tx.objectStore("datasets").get(key);req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);});}
+  async function ctDbSet(key,value){const db=await ctOpenDB();return new Promise((resolve,reject)=>{const tx=db.transaction("datasets","readwrite");tx.objectStore("datasets").put(value,key);tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);});}
+  // Firma determinista rápida para evitar escribir contenido idéntico.
+  function ctHash(value){const str=String(value??"");let h=2166136261;for(let i=0;i<str.length;i++){h^=str.charCodeAt(i);h=Math.imul(h,16777619);}return (h>>>0).toString(16)+"-"+str.length;}
+  function ctCapture(){
+    return {
+      stock_text:document.getElementById("txtStock")?.value??stockText??"",
+      moves_text:document.getElementById("txtMoves")?.value??movesText??"",
+      manual_json:safeJsonStringify(manualOverrides,[]),
+      io_manual_json:safeJsonStringify(ioManual,{}),
+      io_snaps_json:safeJsonStringify(ioSnaps,{}),
+      occ_monthly_json:getLocalRaw(LS_KEY_OCC)||"{}",
+      occ_legacy_json:getLocalRaw(LS_KEY_OCC_LEGACY)||"{}",
+      occ_snaps_json:getLocalRaw(LS_KEY_OCC_SNAPS)||"{}",
+      aisle_bg:getLocalRaw(LS_KEY_BG)
+    };
   }
-
-  function setPcStatus(msg){
-    if(!cloudStatus) return;
-    cloudStatus.textContent = msg || "—";
-  }
-
-  function safeJsonStringify(value, fallback){
+  function ctApply(d){
+    ctLoading=true;
     try{
-      return JSON.stringify(value ?? fallback ?? {});
-    }catch(e){
-      console.warn("No se pudo convertir a JSON", e);
-      return JSON.stringify(fallback ?? {});
-    }
+      const s=document.getElementById("txtStock"),m=document.getElementById("txtMoves");
+      if(s)s.value=d.stock_text||"";
+      if(m)m.value=d.moves_text||"";
+      stockText=d.stock_text||""; movesText=d.moves_text||"";
+      manualOverrides=safeJsonParse(d.manual_json,[]);
+      if(!Array.isArray(manualOverrides))manualOverrides=[];
+      ioManual=safeJsonParse(d.io_manual_json,{});
+      ioSnaps=safeJsonParse(d.io_snaps_json,{});
+      // Compatibilidad local ligera, la copia grande se recupera de IndexedDB.
+      setLocalRaw(LS_KEY_MANUAL,JSON.stringify(manualOverrides));
+      setLocalRaw(LS_KEY_IO_MANUAL,JSON.stringify(ioManual));
+      setLocalRaw(LS_KEY_IO_SNAP,JSON.stringify(ioSnaps));
+      if(d.occ_monthly_json!=null)setLocalRaw(LS_KEY_OCC,d.occ_monthly_json);
+      if(d.occ_legacy_json!=null)setLocalRaw(LS_KEY_OCC_LEGACY,d.occ_legacy_json);
+      if(d.occ_snaps_json!=null)setLocalRaw(LS_KEY_OCC_SNAPS,d.occ_snaps_json);
+      if(d.aisle_bg){setLocalRaw(LS_KEY_BG,d.aisle_bg);try{applyAisleBg(d.aisle_bg);}catch(e){}}
+      parseStock(stockText);parseMoves(movesText);applyDerived();updateKPIs();renderManualTable();renderLayout();renderCapacity();rebuildMonthSelector();
+      if(tabInbound?.classList.contains("active"))renderInboundOutbound();
+      try{refreshTransitPanelMini();}catch(e){}
+      try{migrateOccLegacyIfNeeded();}catch(e){}
+    }finally{ctLoading=false;}
   }
-
-  function safeJsonParse(text, fallback){
+  function ctSignatures(data){return Object.fromEntries(CT_DATASETS.map(k=>[k,ctHash(data[k])]));}
+  async function ctSaveLocal(){
+    if(ctLoading)return;
+    const d=ctCapture(), hashes=ctSignatures(d), signature=JSON.stringify(hashes);
+    if(signature===ctLastLocalSignature)return;
+    await ctDbSet("state",{data:d,hashes,savedAt:new Date().toISOString()});
+    ctLastLocalSignature=signature;
+    ctHasRestoredData = true;
+    // El texto grande vive en IndexedDB; no duplicarlo en localStorage.
+    setLocalRaw(CT_DIRTY_KEY,"1");setLocalRaw(CT_LOCAL_STAMP,new Date().toISOString());
+    ctStatus(navigator.onLine?"Guardado en este equipo ✓ · nube pendiente":"Guardado sin conexión ✓ · nube pendiente");
+    ctScheduleCloud();
+  }
+  function ctScheduleLocal(){
+    if(ctLoading)return;
+    clearTimeout(ctSaveTimer);
+    ctStatus("Cambios pendientes...");
+    ctSaveTimer=setTimeout(()=>ctSaveLocal().catch(e=>{console.error(e);ctStatus("Error guardando en el equipo");}),1100);
+  }
+  function splitTextForFirebase(v,size=FIREBASE_CHUNK_SIZE){const t=String(v??"");if(!t)return[""];const parts=[];for(let i=0;i<t.length;i+=size)parts.push(t.slice(i,i+size));return parts;}
+  const datasetChunkId=(k,i)=>`${k}_chunk_${String(i).padStart(4,"0")}`;
+  async function saveDatasetToFirebase(fb,key,value,email){
+    const parts=splitTextForFirebase(value);
+    // Primero los datos, luego metadatos: nunca anunciar bloques incompletos.
+    for(let i=0;i<parts.length;i++)await fb.setDoc(fb.doc(fb.db,"capacity_tools",datasetChunkId(key,i)),{datasetKey:key,index:i,text:parts[i],updatedAt:fb.serverTimestamp(),updatedBy:email},{merge:true});
+    await fb.setDoc(fb.doc(fb.db,"capacity_tools",`${key}_meta`),{datasetKey:key,chunks:parts.length,length:String(value??"").length,updatedAt:fb.serverTimestamp(),updatedBy:email},{merge:true});
+    return {chunks:parts.length,length:String(value??"").length};
+  }
+  async function loadDatasetFromFirebase(fb,key){
+    const meta=await fb.getDoc(fb.doc(fb.db,"capacity_tools",`${key}_meta`));
+    if(!meta.exists())return "";
+    const count=Number(meta.data()?.chunks||0);
+    if(count<1||count>5000)throw Error("Cantidad de bloques inválida para "+key);
+    const docs=await Promise.all(Array.from({length:count},(_,i)=>fb.getDoc(fb.doc(fb.db,"capacity_tools",datasetChunkId(key,i)))));
+    if(docs.some(d=>!d.exists()))throw Error("Respaldo incompleto: "+key);
+    return docs.map(d=>String(d.data()?.text??"")).join("");
+  }
+  async function ctWaitFirebase(){for(let i=0;i<70&&!window.ctFirebase;i++)await new Promise(r=>setTimeout(r,100));return window.ctFirebase;}
+  async function ensureFirebaseLogin(){const fb=await ctWaitFirebase();if(!fb)throw Error("Firebase no disponible");if(!fb.auth.currentUser)await fb.signInAnonymously(fb.auth);if(!fb.auth.currentUser)throw Error("No se pudo establecer una conexión anónima");return fb;}
+  async function ctCloudSync(force=false){
+    if(ctInFlight){ctNeedsAnotherSync=true;return;}
+    const fb=await ctWaitFirebase();
+    if(!navigator.onLine||!fb?.auth.currentUser){ctStatus("Datos locales guardados · nube pendiente");return;}
+    // El estado inicial vacío NUNCA debe sobrescribir información ya existente.
+    if(!ctHasRestoredData || (!ctRemoteVerified && getLocalRaw(CT_DIRTY_KEY)!=="1")){
+      ctStatus("Verificando respaldo anterior antes de sincronizar...");
+      await ctCloudLoad();
+      return;
+    }
+    ctInFlight=true;
     try{
-      if(text == null || text === "") return fallback;
-      return JSON.parse(text);
-    }catch(e){
-      console.warn("No se pudo leer JSON desde Firebase", e);
-      return fallback;
-    }
-  }
-
-  function splitTextForFirebase(text, size = FIREBASE_CHUNK_SIZE){
-    const value = String(text || "");
-    if(!value) return [""];
-    const chunks = [];
-    for(let i = 0; i < value.length; i += size){
-      chunks.push(value.slice(i, i + size));
-    }
-    return chunks;
-  }
-
-  function datasetChunkId(datasetKey, i){
-    return `${datasetKey}_chunk_${String(i).padStart(4, "0")}`;
-  }
-
-  async function saveDatasetToFirebase(fb, datasetKey, text, userEmail){
-    const value = String(text || "");
-    const chunks = splitTextForFirebase(value);
-
-    // Metadata del dataset
-    await fb.setDoc(fb.doc(fb.db, "capacity_tools", `${datasetKey}_meta`), {
-      datasetKey,
-      chunks: chunks.length,
-      length: value.length,
-      updatedAt: fb.serverTimestamp(),
-      updatedBy: userEmail
-    }, { merge: true });
-
-    // Chunks reales
-    for(let i = 0; i < chunks.length; i++){
-      await fb.setDoc(fb.doc(fb.db, "capacity_tools", datasetChunkId(datasetKey, i)), {
-        datasetKey,
-        index: i,
-        text: chunks[i],
-        updatedAt: fb.serverTimestamp(),
-        updatedBy: userEmail
-      }, { merge: true });
-    }
-
-    return { chunks: chunks.length, length: value.length };
-  }
-
-  async function loadDatasetFromFirebase(fb, datasetKey){
-    const metaSnap = await fb.getDoc(fb.doc(fb.db, "capacity_tools", `${datasetKey}_meta`));
-    if(!metaSnap.exists()) return "";
-
-    const meta = metaSnap.data() || {};
-    const totalChunks = Number(meta.chunks || 0);
-    if(!totalChunks) return "";
-
-    let out = "";
-    for(let i = 0; i < totalChunks; i++){
-      const chunkSnap = await fb.getDoc(fb.doc(fb.db, "capacity_tools", datasetChunkId(datasetKey, i)));
-      if(chunkSnap.exists()){
-        const data = chunkSnap.data() || {};
-        out += String(data.text || "");
+      await ctSaveLocal();
+      const d=ctCapture(), hashes=ctSignatures(d), email=fb.auth.currentUser.email||"";
+      ctStatus("Sincronizando cambios...");
+      const idxRef=fb.doc(fb.db,"capacity_tools","main_index");
+      const remoteSnap=await fb.getDoc(idxRef);
+      const remote=remoteSnap.exists()?remoteSnap.data():{};
+      if(!remoteSnap.exists())ctRemoteVerified=true;
+      // Si hay respaldo anterior sin hashes y este equipo no tiene cambios reales,
+      // nunca sobrescribir el respaldo; primero recuperarlo.
+      if(remoteSnap.exists() && !remote.hashes && getLocalRaw(CT_DIRTY_KEY)!=="1") {
+        ctStatus("Recuperando respaldo anterior...");
+        await ctCloudLoad(true);
+        return;
       }
-    }
-    return out;
-  }
-
-  async function ensureFirebaseLogin(){
-    const fb = window.ctFirebase;
-    if(!fb) throw new Error("Firebase no está cargado.");
-
-    if(!fb.auth.currentUser){
-      await fb.signInWithPopup(fb.auth, fb.provider);
-    }
-
-    if(!fb.auth.currentUser){
-      throw new Error("No se pudo iniciar sesión en Firebase.");
-    }
-
-    return fb;
-  }
-
-  function getLocalRaw(key){
-    try{ return localStorage.getItem(key) || ""; }
-    catch(e){ return ""; }
-  }
-
-  function setLocalRaw(key, value){
-    try{ localStorage.setItem(key, String(value || "")); }
-    catch(e){ console.warn("No se pudo guardar localStorage", key, e); }
-  }
-
-  if(btnCloudSave){
-    btnCloudSave.addEventListener("click", async ()=>{
-      try{
-        setPcStatus("Firebase: guardando...");
-
-        const fb = await ensureFirebaseLogin();
-        const userEmail = fb.auth.currentUser.email || "";
-
-        const s = document.getElementById("txtStock");
-        const m = document.getElementById("txtMoves");
-
-        const stockTextNow = s ? (s.value || "") : "";
-        const movesTextNow = m ? (m.value || "") : "";
-
-        const manualNow = Array.isArray(manualOverrides) ? manualOverrides : [];
-        const ioManualNow = typeof ioManual !== "undefined" ? ioManual : {};
-        const ioSnapsNow = typeof ioSnaps !== "undefined" ? ioSnaps : {};
-
-        // Ocupación / históricos también van al backup nube.
-        const occMonthlyRaw = getLocalRaw(typeof LS_KEY_OCC !== "undefined" ? LS_KEY_OCC : "capacityTools_occHistoryByMonth_v2");
-        const occLegacyRaw  = getLocalRaw(typeof LS_KEY_OCC_LEGACY !== "undefined" ? LS_KEY_OCC_LEGACY : "capacityTools_occHistory_v1");
-        const occSnapsRaw   = getLocalRaw(typeof LS_KEY_OCC_SNAPS !== "undefined" ? LS_KEY_OCC_SNAPS : "capacityTools_occSnapshots_v1");
-        const bgRaw         = getLocalRaw(typeof LS_KEY_BG !== "undefined" ? LS_KEY_BG : "capacityTools_bgImage_v1");
-
-        const manifest = {
-          version: 2,
-          savedAt: new Date().toISOString(),
-          savedBy: userEmail,
-          datasets: {
-            stock_text: await saveDatasetToFirebase(fb, "stock_text", stockTextNow, userEmail),
-            moves_text: await saveDatasetToFirebase(fb, "moves_text", movesTextNow, userEmail),
-            manual_json: await saveDatasetToFirebase(fb, "manual_json", safeJsonStringify(manualNow, []), userEmail),
-            io_manual_json: await saveDatasetToFirebase(fb, "io_manual_json", safeJsonStringify(ioManualNow, {}), userEmail),
-            io_snaps_json: await saveDatasetToFirebase(fb, "io_snaps_json", safeJsonStringify(ioSnapsNow, {}), userEmail),
-            occ_monthly_json: await saveDatasetToFirebase(fb, "occ_monthly_json", occMonthlyRaw || "{}", userEmail),
-            occ_legacy_json: await saveDatasetToFirebase(fb, "occ_legacy_json", occLegacyRaw || "{}", userEmail),
-            occ_snaps_json: await saveDatasetToFirebase(fb, "occ_snaps_json", occSnapsRaw || "{}", userEmail),
-            aisle_bg: await saveDatasetToFirebase(fb, "aisle_bg", bgRaw || "", userEmail)
-          }
-        };
-
-        await fb.setDoc(fb.doc(fb.db, "capacity_tools", "main_index"), {
-          ...manifest,
-          updatedAt: fb.serverTimestamp(),
-          updatedBy: userEmail
-        }, { merge: true });
-
-        // Respaldo local ligero.
-        // IMPORTANTE: moves_text ya quedó guardado en Firebase por chunks; no se duplica
-        // en localStorage porque puede exceder la cuota del navegador.
-        stockText = stockTextNow;
-        movesText = movesTextNow;
-        manualOverrides = manualNow;
-        ioManual = ioManualNow;
-        ioSnaps = ioSnapsNow;
-
-        // Limpia únicamente el respaldo local antiguo del Panel 3 para liberar espacio.
-        // NO toca ioSnaps / meses cerrados.
-        try{ localStorage.removeItem(LS_KEY_MOVES); }catch(e){}
-
-        setLocalRaw(LS_KEY_STOCK, stockTextNow);
-        setLocalRaw(LS_KEY_MANUAL, JSON.stringify(manualNow));
-        setLocalRaw(LS_KEY_IO_MANUAL, JSON.stringify(ioManualNow));
-        setLocalRaw(LS_KEY_IO_SNAP, JSON.stringify(ioSnapsNow));
-
-        setPcStatus("Firebase: guardado ✓");
-        alert("✅ Guardado en Firebase correctamente.\nLa data grande se guardó en chunks pequeños.");
-      }catch(e){
-        console.error(e);
-        setPcStatus("Firebase: error al guardar");
-        alert("❌ No se pudo guardar en Firebase. Revisa la consola para ver el error exacto.");
+      // Las copias de versiones anteriores no guardaban firmas.
+      // Evitar reemplazarlas por campos vacíos en la primera conexión.
+      if(remoteSnap.exists() && !remote.hashes && !force && !ctRemoteVerified){
+        ctStatus("Recuperando versión anterior de Firebase...");
+        await ctCloudLoad(true);
+        return;
       }
-    });
+      const rh=remote.hashes||{};
+      const changed=CT_DATASETS.filter(k=>force||rh[k]!==hashes[k]);
+      if(!changed.length){ctRemoteVerified=true;setLocalRaw(CT_DIRTY_KEY,"0");setLocalRaw(CT_CLOUD_STAMP,new Date().toISOString());ctStatus("Sincronizado ✓ · sin cambios que subir");return;}
+      const datasetInfo={...(remote.datasets||{})};
+      for(const k of changed)datasetInfo[k]=await saveDatasetToFirebase(fb,k,d[k],email);
+      await fb.setDoc(idxRef,{version:3,savedAt:new Date().toISOString(),savedBy:email,datasets:datasetInfo,hashes,updatedAt:fb.serverTimestamp(),updatedBy:email},{merge:true});
+      ctRemoteVerified=true;
+      setLocalRaw(CT_CLOUD_STAMP,new Date().toISOString());
+      if(JSON.stringify(ctSignatures(ctCapture()))===JSON.stringify(hashes)){
+        setLocalRaw(CT_DIRTY_KEY,"0");ctStatus(`Sincronizado ✓ · ${changed.length} sección(es) actualizada(s)`);
+      }else{ctStatus("Sincronizado parcialmente · nuevos cambios pendientes");ctNeedsAnotherSync=true;}
+    }catch(e){console.error("Sincronización Firebase",e);ctStatus("Guardado local ✓ · sincronización pendiente");}
+    finally{ctInFlight=false;if(ctNeedsAnotherSync){ctNeedsAnotherSync=false;ctScheduleCloud();}}
   }
-
-  if(btnCloudLoad){
-    btnCloudLoad.addEventListener("click", async ()=>{
-      try{
-        setPcStatus("Firebase: cargando...");
-
-        const fb = window.ctFirebase;
-        if(!fb) return alert("❌ Firebase no está cargado.");
-
-        const stockTextCloud = await loadDatasetFromFirebase(fb, "stock_text");
-        const movesTextCloud = await loadDatasetFromFirebase(fb, "moves_text");
-        const manualJsonCloud = await loadDatasetFromFirebase(fb, "manual_json");
-        const ioManualJsonCloud = await loadDatasetFromFirebase(fb, "io_manual_json");
-        const ioSnapsJsonCloud = await loadDatasetFromFirebase(fb, "io_snaps_json");
-        const occMonthlyCloud = await loadDatasetFromFirebase(fb, "occ_monthly_json");
-        const occLegacyCloud = await loadDatasetFromFirebase(fb, "occ_legacy_json");
-        const occSnapsCloud = await loadDatasetFromFirebase(fb, "occ_snaps_json");
-        const bgCloud = await loadDatasetFromFirebase(fb, "aisle_bg");
-
-        const s = document.getElementById("txtStock");
-        const m = document.getElementById("txtMoves");
-
-        if(s) s.value = stockTextCloud || "";
-        if(m) m.value = movesTextCloud || "";
-
-        stockText = stockTextCloud || "";
-        movesText = movesTextCloud || "";
-        manualOverrides = safeJsonParse(manualJsonCloud, []);
-        if(!Array.isArray(manualOverrides)) manualOverrides = [];
-        ioManual = safeJsonParse(ioManualJsonCloud, {});
-        ioSnaps = safeJsonParse(ioSnapsJsonCloud, {});
-
-        // Respaldo local ligero: Panel 3 permanece en memoria + Firebase.
-        // Eliminamos cualquier copia local antigua del reporte grande para evitar QuotaExceededError.
-        try{ localStorage.removeItem(LS_KEY_MOVES); }catch(e){}
-        setLocalRaw(LS_KEY_STOCK, stockText);
-        setLocalRaw(LS_KEY_MANUAL, JSON.stringify(manualOverrides));
-        setLocalRaw(LS_KEY_IO_MANUAL, JSON.stringify(ioManual || {}));
-        setLocalRaw(LS_KEY_IO_SNAP, JSON.stringify(ioSnaps || {}));
-
-        if(occMonthlyCloud) setLocalRaw(typeof LS_KEY_OCC !== "undefined" ? LS_KEY_OCC : "capacityTools_occHistoryByMonth_v2", occMonthlyCloud);
-        if(occLegacyCloud) setLocalRaw(typeof LS_KEY_OCC_LEGACY !== "undefined" ? LS_KEY_OCC_LEGACY : "capacityTools_occHistory_v1", occLegacyCloud);
-        if(occSnapsCloud) setLocalRaw(typeof LS_KEY_OCC_SNAPS !== "undefined" ? LS_KEY_OCC_SNAPS : "capacityTools_occSnapshots_v1", occSnapsCloud);
-        if(bgCloud) {
-          setLocalRaw(typeof LS_KEY_BG !== "undefined" ? LS_KEY_BG : "capacityTools_bgImage_v1", bgCloud);
-          try{ applyAisleBg(bgCloud); }catch(e){}
+  function ctScheduleCloud(){if(ctLoading)return;clearTimeout(ctCloudTimer);ctCloudTimer=setTimeout(()=>ctCloudSync(),12000);}
+  async function ctCloudLoad(allowOverwrite=false){
+    const fb=await ctWaitFirebase();if(!fb?.auth.currentUser)return;
+    if(getLocalRaw(CT_DIRTY_KEY)==="1"&&!allowOverwrite){ctStatus("Cambios locales pendientes · sincronizando");ctScheduleCloud();return;}
+    ctStatus("Cargando datos sincronizados...");
+    const idx=await fb.getDoc(fb.doc(fb.db,"capacity_tools","main_index"));
+    if(!idx.exists()){
+      ctRemoteVerified=true;
+      ctStatus("Sin respaldo en la nube · datos locales disponibles");
+      if(ctHasRestoredData)ctScheduleCloud();
+      return;
+    }
+    const index=idx.data()||{};
+    if(!allowOverwrite && index.hashes && ctLastLocalSignature && JSON.stringify(index.hashes)===ctLastLocalSignature){
+      ctRemoteVerified=true;
+      ctStatus("Información al día ✓ · sincronizada");return;
+    }
+    const values=await Promise.all(CT_DATASETS.map(k=>loadDatasetFromFirebase(fb,k)));
+    const d=Object.fromEntries(CT_DATASETS.map((k,i)=>[k,values[i]]));
+    ctApply(d);
+    const hashes=ctSignatures(d);
+    await ctDbSet("state",{data:d,hashes,savedAt:new Date().toISOString()});
+    ctLastLocalSignature=JSON.stringify(hashes);
+    ctHasRestoredData=true;
+    ctRemoteVerified=true;
+    setLocalRaw(CT_DIRTY_KEY,"0");ctStatus("Datos actualizados ✓");
+  }
+  async function ctBoot(){
+    if(ctBooted)return;ctBooted=true;
+    ctStatus("Cargando información...");
+    // Los datos de versiones previas estaban en localStorage: no eliminarlos.
+    if(stockText && txtStock)txtStock.value=stockText;
+    if(movesText && txtMoves)txtMoves.value=movesText;
+    try{
+      const cached=await ctDbGet("state");
+      if(cached?.data){
+        ctApply(cached.data);
+        ctLastLocalSignature=JSON.stringify(ctSignatures(cached.data));
+        ctHasRestoredData=true;
+        ctStatus("Información visible ✓ · verificando nube...");
+      }else{
+        // Recuperación de campos persistidos en versiones anteriores.
+        if(stockText || movesText || manualOverrides.length || Object.keys(ioManual||{}).length || Object.keys(ioSnaps||{}).length){
+          ctHasRestoredData=true;
+          if(txtStock)txtStock.value=stockText;
+          if(txtMoves)txtMoves.value=movesText;
+          parseStock(stockText);parseMoves(movesText);applyDerived();updateKPIs();renderManualTable();renderLayout();renderCapacity();rebuildMonthSelector();
         }
-
-        parseStock(stockText);
-        parseMoves(movesText);
-        applyDerived();
-        updateKPIs();
-        renderManualTable();
-        renderLayout();
-        renderCapacity();
-        rebuildMonthSelector();
-        if(tabInbound && tabInbound.classList.contains("active")) renderInboundOutbound();
-        try{ refreshTransitPanelMini(); }catch(e){}
-        try{ migrateOccLegacyIfNeeded(); }catch(e){}
-
-        setPcStatus("Firebase: cargado ✓");
-        alert("✅ Cargado desde Firebase correctamente.");
-      }catch(e){
-        console.error(e);
-        setPcStatus("Firebase: error al cargar");
-        alert("❌ No se pudo cargar desde Firebase. Revisa la consola para ver el error exacto.");
+        ctStatus(ctHasRestoredData ? "Datos anteriores visibles · verificando nube..." : "Consultando respaldo automático...");
       }
+    }catch(e){console.warn("IndexedDB",e);ctStatus("Datos del navegador disponibles · verificando nube...");}
+    const fb=await ctWaitFirebase();
+    if(!fb){ctStatus("Firebase no disponible · datos locales visibles");return;}
+    fb.onAuthStateChanged(fb.auth, async user=>{
+      if(!user){
+        ctStatus(ctHasRestoredData ? "Datos locales disponibles · conectando nube..." : "Recuperando información de la nube...");
+        try { await fb.signInAnonymously(fb.auth); }
+        catch(e){
+          console.error("Acceso automático Firebase",e);
+          const code=String(e?.code||"");
+          if(code.includes("operation-not-allowed")) ctStatus("Activa el acceso anónimo en Firebase Authentication");
+          else if(code.includes("unauthorized-domain")) ctStatus("Revisa dominios autorizados en Firebase Authentication");
+          else ctStatus("Nube no disponible ("+(code||"conexión")+") · datos locales conservados");
+        }
+        return;
+      }
+      try{
+        if(getLocalRaw(CT_DIRTY_KEY)==="1" && ctHasRestoredData)await ctCloudSync();
+        else await ctCloudLoad();
+      }catch(e){console.error("Carga inicial",e);ctStatus("Datos locales disponibles · revisa permisos Firestore");}
     });
   }
+  if(btnCloudSave){btnCloudSave.style.display="none";btnCloudSave.textContent="☁️ Sincronizar ahora";btnCloudSave.title="Solo sube secciones modificadas";btnCloudSave.addEventListener("click",async()=>{try{await ensureFirebaseLogin();await ctSaveLocal();await ctCloudSync();}catch(e){console.error(e);ctStatus("Conexión o permisos pendientes");}});}
+  if(btnCloudLoad){btnCloudLoad.style.display="none";btnCloudLoad.textContent="↻ Recuperar nube";btnCloudLoad.title="Recuperación manual; puede reemplazar cambios locales";btnCloudLoad.addEventListener("click",async()=>{try{await ensureFirebaseLogin();if(getLocalRaw(CT_DIRTY_KEY)==="1"&&!confirm("Hay cambios locales sin sincronizar. ¿Reemplazarlos con la copia de Firebase?"))return;await ctCloudLoad(true);}catch(e){console.error(e);ctStatus("No fue posible recuperar Firebase");}});}
+  // Registra cualquier cambio local persistido por los módulos existentes.
+  const ctStorageSet=Storage.prototype.setItem;
+  Storage.prototype.setItem=function(k,v){const result=ctStorageSet.call(this,k,v);if(this===localStorage&&[LS_KEY_MANUAL,LS_KEY_IO_MANUAL,LS_KEY_IO_SNAP,LS_KEY_OCC,LS_KEY_OCC_LEGACY,LS_KEY_OCC_SNAPS,LS_KEY_BG].includes(k))ctScheduleLocal();return result;};
+  for(const el of [document.getElementById("txtStock"),document.getElementById("txtMoves")]){
+    if(el){let ctInputRenderTimer;el.addEventListener("input",()=>{ctScheduleLocal();clearTimeout(ctInputRenderTimer);ctInputRenderTimer=setTimeout(()=>el.dispatchEvent(new Event("change")),1400);});el.addEventListener("change",()=>{
+      if(ctLoading)return;
+      clearTimeout(ctSaveTimer);
+      try{
+        stockText=document.getElementById("txtStock")?.value||"";
+        movesText=document.getElementById("txtMoves")?.value||"";
+        parseStock(stockText);parseMoves(movesText);applyDerived();updateKPIs();renderManualTable();renderLayout();renderCapacity();rebuildMonthSelector();
+        if(tabInbound?.classList.contains("active"))renderInboundOutbound();
+      }catch(e){console.error("Procesamiento automático",e);}
+      ctScheduleLocal();
+    });}
+  }
+  ["btnProcess","btnAddManual","btnClearManual","btnReset","btnSaveTagged","btnClearTagged","btnCloseMonth","btnSaveOccToday","btnDeleteOccToday","btnAdmOccSave","btnAdmOccDelete","btnBg","btnBgClear"].forEach(id=>{
+    document.getElementById(id)?.addEventListener("click",()=>setTimeout(ctScheduleLocal,250));
+  });
+  window.addEventListener("online",()=>{ctStatus("Conexión recuperada · sincronizando...");ctScheduleCloud();});
+  document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")ctSaveLocal().catch(console.error);});
+  window.addEventListener("beforeunload",()=>{if(ctSaveTimer)ctSaveLocal().catch(console.error);});
+  ctBoot();
 
   function isBulkSourceLoc(loc){
     return /^bulk_cw\d+(\.\d+)?$/i.test(String(loc||"").trim());
