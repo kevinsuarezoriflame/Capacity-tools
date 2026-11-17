@@ -989,6 +989,7 @@
               <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                 <button class="btn sm" id="btnSaveOccToday" type="button">Guardar ocupación (hoy)</button>
                 <button class="btn ghost sm" id="btnViewOccHistory" type="button">📈 Ocupación</button>
+                <button class="btn primary sm" id="btnOccAnnual" type="button">📊 Máximos mensuales</button>
                 <button class="btn danger sm" id="btnDeleteOccToday" type="button" title="Eliminar ocupación guardada del día">🗑️</button>
               </div>
             </div>
@@ -1171,6 +1172,38 @@
     </div>
   </div>
 
+
+  <!-- Vista gerencial: máximos mensuales de ocupación (solo lectura) -->
+  <div class="modal" id="modalOccAnnual" role="dialog" aria-modal="true" aria-label="Máximos de ocupación mensual">
+    <div class="modal-card" style="width:min(1160px,100%);max-height:94vh;overflow:auto;">
+      <div class="modal-head" style="flex-wrap:wrap;">
+        <div class="modal-title">📊 Evolución de ocupación · máximos mensuales</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button class="btn sm" id="btnAnnualPng" type="button">📥 Descargar PNG</button>
+          <button class="btn danger sm" id="btnAnnualClose" type="button">Cerrar</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div style="display:flex;align-items:end;flex-wrap:wrap;gap:12px;margin-bottom:12px;">
+          <div style="min-width:150px;max-width:220px;"><label for="annualEndMonth">Último mes del período</label><select id="annualEndMonth"></select></div>
+          <div><label>Tipo de gráfico</label><div style="display:flex;gap:6px;"><button class="btn sm primary" id="annualBars" type="button" aria-pressed="true">▥ Barras</button><button class="btn sm" id="annualLines" type="button" aria-pressed="false">⌁ Líneas</button></div></div>
+          <div style="flex:1;min-width:210px;"><div class="muted">Comparativo de meses cerrados con información</div><div id="annualPeriodLabel" style="font-weight:900;margin-top:4px;">—</div></div>
+        </div>
+        <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(190px,1fr));margin:8px 0 12px;">
+          <div class="kpi"><div class="label">📦 Mayor pico de pallets</div><div class="value" id="annualPeakPallets" style="font-size:25px;">—</div><div class="sub" id="annualPeakPalletsWhen">—</div></div>
+          <div class="kpi"><div class="label">📈 Mayor % de ocupación</div><div class="value" id="annualPeakPct" style="font-size:25px;">—</div><div class="sub" id="annualPeakPctWhen">—</div></div>
+          <div class="kpi"><div class="label">🗓️ Meses con datos</div><div class="value" id="annualMonthCount" style="font-size:25px;">—</div><div class="sub">Meses cerrados con registros</div></div>
+        </div>
+        <div style="border:1px solid var(--border);border-radius:14px;background:white;padding:12px;">
+          <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;font-weight:800;font-size:12px;margin-bottom:6px;"><span style="color:#089b94;">■ Pallets usados (eje izquierdo)</span><span style="color:#7c3aed;">■ Ocupación % (eje derecho)</span></div>
+          <div style="position:relative;width:100%;"><canvas id="annualOccCanvas" width="1080" height="430" style="display:block;width:100%;height:auto;max-height:430px;"></canvas></div>
+          <div class="hint" style="margin-top:5px;">Se utiliza el máximo diario de pallets y el máximo diario del porcentaje, calculados de manera independiente. Los dos picos pueden corresponder a fechas distintas. Solo meses cerrados con registros reales; no se agregan meses vacíos.</div>
+        </div>
+        <div style="overflow-x:auto;margin-top:14px;"><table class="tbl mini"><thead><tr><th>Mes cerrado</th><th>Máx. pallets</th><th>Fecha pico pallets</th><th>Máx. ocupación</th><th>Fecha pico ocupación</th><th>Días registrados</th></tr></thead><tbody id="annualOccTbody"></tbody></table></div>
+        <div id="annualDataNote" class="hint" style="margin-top:8px;"></div>
+      </div>
+    </div>
+  </div>
 
   <!-- Modal oculto: editor manual de ocupación -->
   <div class="modal" id="modalOccAdmin">
@@ -4134,6 +4167,159 @@ Esta acción no se puede deshacer.`);
   }
 
 
+
+  // =========================
+  // Evolución anual: máximos mensuales de históricos cerrados (solo lectura).
+  // =========================
+  const annualModal = document.getElementById("modalOccAnnual");
+  const annualCanvas = document.getElementById("annualOccCanvas");
+  const annualEndMonth = document.getElementById("annualEndMonth");
+  let annualChartMode = "bars";
+  let annualRows = [];
+  const annualShortMonths = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+  const annualFormatInt = n => Number(n).toLocaleString("es-EC",{maximumFractionDigits:0});
+  const annualFormatPct = n => Number(n).toLocaleString("es-EC",{minimumFractionDigits:2,maximumFractionDigits:2})+"%";
+  function annualShiftMonth(key, shift){
+    const [year,month]=key.split("-").map(Number);
+    const d=new Date(year,month-1+shift,1);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+  }
+  function annualClosedMonthKeys(){
+    const current=getCurrentSystemMonthKey();
+    const occSnaps=loadOccSnaps();
+    const ioClosedSnaps=(typeof ioSnaps !== "undefined" && ioSnaps) ? ioSnaps : {};
+    const keys=new Set([...Object.keys(occSnaps), ...Object.keys(ioClosedSnaps)]);
+    // Los meses futuros, el mes en curso y meses sin registros reales se excluyen.
+    return [...keys].filter(k=>/^\d{4}-\d{2}$/.test(k) && k<current)
+      .filter(k=>Object.entries(getOccMonthBucket(k,"SNAP")||{}).some(([date,r])=>{
+        if(!date.startsWith(k+"-") || !/^\d{4}-\d{2}-\d{2}$/.test(date))return false;
+        const pal=r?.palletsUsed, pct=r?.pct;
+        return (pal!==null && pal!==undefined && pal!=="" && Number.isFinite(Number(pal)) && Number(pal)>=0)
+          || (pct!==null && pct!==undefined && pct!=="" && Number.isFinite(Number(pct)) && Number(pct)>=0 && Number(pct)<=100);
+      })).sort();
+  }
+  function annualBuildRows(endKey){
+    // Muestra todos los meses cerrados con data hasta el cierre elegido.
+    return annualClosedMonthKeys().filter(key=>key<=endKey).map(key=>{
+      const map=getOccMonthBucket(key,"SNAP");
+      let peakPallets=null, peakPct=null, datePallets="", datePct="", validDays=0;
+      for(const [date,entry] of Object.entries(map||{})){
+        if(!/^\d{4}-\d{2}-\d{2}$/.test(date) || !date.startsWith(key+"-"))continue;
+        const p=entry && entry.palletsUsed!=null && entry.palletsUsed!=="" ? Number(entry.palletsUsed) : NaN;
+        const pct=entry && entry.pct!=null && entry.pct!=="" ? Number(entry.pct) : NaN;
+        if(!Number.isFinite(p) && !Number.isFinite(pct))continue;
+        validDays++;
+        if(Number.isFinite(p) && p>=0 && (peakPallets===null || p>peakPallets)){peakPallets=p;datePallets=date;}
+        if(Number.isFinite(pct) && pct>=0 && pct<=100 && (peakPct===null || pct>peakPct)){peakPct=pct;datePct=date;}
+      }
+      return {key,label:`${annualShortMonths[Number(key.slice(5))-1]} ${key.slice(2,4)}`,closed:true,peakPallets,peakPct,datePallets,datePct,validDays};
+    });
+  }
+  function annualDrawChart(){
+    const cv=annualCanvas;if(!cv)return;
+    const ctx=cv.getContext("2d");if(!ctx)return;
+    const W=cv.width,H=cv.height;
+    ctx.clearRect(0,0,W,H);ctx.fillStyle="#fff";ctx.fillRect(0,0,W,H);
+    const pad={left:76,right:74,top:28,bottom:72};
+    const plotW=W-pad.left-pad.right,plotH=H-pad.top-pad.bottom;
+    const pals=annualRows.map(r=>r.peakPallets).filter(Number.isFinite);
+    const pcts=annualRows.map(r=>r.peakPct).filter(Number.isFinite);
+    const maxPal=pals.length?Math.max(1,Math.ceil(Math.max(...pals)*1.12/50)*50):100;
+    const maxPct=pcts.length?Math.min(100,Math.max(20,Math.ceil(Math.max(...pcts)*1.10/10)*10)):100;
+    const palY=v=>pad.top+plotH-(v/maxPal)*plotH;
+    const pctY=v=>pad.top+plotH-(v/maxPct)*plotH;
+    const count=Math.max(1,annualRows.length);
+    const x=i=>pad.left+plotW*(i+.5)/count;
+    ctx.font="12px system-ui, sans-serif";ctx.textAlign="right";ctx.textBaseline="middle";
+    for(let i=0;i<=5;i++){
+      const yy=pad.top+plotH*i/5;
+      ctx.strokeStyle="#e2e8f0";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(pad.left,yy);ctx.lineTo(W-pad.right,yy);ctx.stroke();
+      ctx.fillStyle="#64748b";ctx.fillText(annualFormatInt(maxPal*(5-i)/5),pad.left-12,yy);
+      ctx.textAlign="left";ctx.fillText(`${(maxPct*(5-i)/5).toFixed(0)}%`,W-pad.right+10,yy);ctx.textAlign="right";
+    }
+    ctx.font="bold 12px system-ui, sans-serif";ctx.textAlign="center";ctx.textBaseline="top";
+    annualRows.forEach((r,i)=>{ctx.fillStyle="#475569";ctx.fillText(r.label,x(i),H-pad.bottom+12);});
+    const palColor="#0d9488",pctColor="#7c3aed";
+    if(annualChartMode==="bars"){
+      annualRows.forEach((r,i)=>{
+        const barW=Math.min(23,plotW/count*.31);
+        if(r.peakPallets!==null){const yy=palY(r.peakPallets);ctx.fillStyle=palColor;ctx.fillRect(x(i)-barW-2,yy,barW,pad.top+plotH-yy);}
+        if(r.peakPct!==null){const yy=pctY(r.peakPct);ctx.fillStyle=pctColor;ctx.fillRect(x(i)+2,yy,barW,pad.top+plotH-yy);}
+      });
+    }else{
+      const drawSeries=(field,yFn,color)=>{
+        ctx.strokeStyle=color;ctx.lineWidth=3;ctx.lineJoin="round";ctx.beginPath();let active=false;
+        annualRows.forEach((r,i)=>{const value=r[field];if(value===null){active=false;return;}const xx=x(i),yy=yFn(value);if(!active){ctx.moveTo(xx,yy);active=true;}else ctx.lineTo(xx,yy);});ctx.stroke();
+        annualRows.forEach((r,i)=>{const value=r[field];if(value===null)return;ctx.beginPath();ctx.arc(x(i),yFn(value),4.5,0,Math.PI*2);ctx.fillStyle="#fff";ctx.fill();ctx.strokeStyle=color;ctx.lineWidth=2.5;ctx.stroke();});
+      };
+      drawSeries("peakPallets",palY,palColor);drawSeries("peakPct",pctY,pctColor);
+    }
+    ctx.fillStyle="#64748b";ctx.font="11px system-ui, sans-serif";ctx.textAlign="center";
+    ctx.fillText("Pallets máximos · eje izquierdo  |  Ocupación máxima (%) · eje derecho",W/2,H-14);
+    if(!pals.length && !pcts.length){ctx.font="bold 18px system-ui, sans-serif";ctx.fillStyle="#64748b";ctx.fillText("No hay registros de ocupación en los meses cerrados seleccionados",W/2,H/2);}
+  }
+  function annualUpdate(){
+    if(!annualEndMonth || !annualEndMonth.value)return;
+    const end=annualEndMonth.value;
+    annualRows=annualBuildRows(end);
+    const setText=(id,text)=>{const el=document.getElementById(id);if(el)el.textContent=text;};
+    setText("annualPeriodLabel",annualRows.length ? `${monthLabel(annualRows[0].key)} — ${monthLabel(end)}` : "Sin históricos cerrados con registros");
+    const withPal=annualRows.filter(r=>r.peakPallets!==null);
+    const withPct=annualRows.filter(r=>r.peakPct!==null);
+    const topPal=withPal.reduce((a,b)=>!a||b.peakPallets>a.peakPallets?b:a,null);
+    const topPct=withPct.reduce((a,b)=>!a||b.peakPct>a.peakPct?a:b,null);
+    setText("annualPeakPallets",topPal?annualFormatInt(topPal.peakPallets):"—");
+    setText("annualPeakPalletsWhen",topPal?`${monthLabel(topPal.key)} · ${topPal.datePallets}`:"Sin registros");
+    setText("annualPeakPct",topPct?annualFormatPct(topPct.peakPct):"—");
+    setText("annualPeakPctWhen",topPct?`${monthLabel(topPct.key)} · ${topPct.datePct}`:"Sin registros");
+    setText("annualMonthCount",String(annualRows.filter(r=>r.validDays>0).length));
+    const tb=document.getElementById("annualOccTbody");
+    if(tb){
+      tb.replaceChildren();
+      for(const r of annualRows){
+        const tr=document.createElement("tr");
+        const values=[monthLabel(r.key)+(r.closed?"":" · No cerrado"),r.peakPallets===null?"—":annualFormatInt(r.peakPallets),r.datePallets||"—",r.peakPct===null?"—":annualFormatPct(r.peakPct),r.datePct||"—",r.validDays?String(r.validDays):"—"];
+        for(const v of values){const td=document.createElement("td");td.textContent=v;tr.appendChild(td);}tb.appendChild(tr);
+      }
+    }
+    setText("annualDataNote","Fuente: snapshots de ocupación diarios de meses cerrados. Este reporte es de solo lectura; no modifica los cierres ni sus registros.");
+    annualDrawChart();
+  }
+  function annualSetMode(mode){
+    annualChartMode=mode;
+    for(const [id,value] of [["annualBars","bars"],["annualLines","lines"]]){
+      const el=document.getElementById(id);if(!el)continue;
+      el.classList.toggle("primary",mode===value);el.setAttribute("aria-pressed",String(mode===value));
+    }
+    annualDrawChart();
+  }
+  document.getElementById("btnOccAnnual")?.addEventListener("click",()=>{
+    const keys=annualClosedMonthKeys();
+    const last=keys.length?keys[keys.length-1]:"";
+    annualEndMonth.replaceChildren();
+    const choices=keys;
+    for(const key of choices.slice().reverse()){
+      const opt=document.createElement("option");opt.value=key;opt.textContent=monthLabel(key);annualEndMonth.appendChild(opt);
+    }
+    if(last)annualEndMonth.value=last;
+    annualModal.classList.add("open");annualUpdate();
+    if(!last){
+      annualRows=[];
+      document.getElementById("annualPeriodLabel").textContent="No hay meses cerrados con ocupación registrada";
+      document.getElementById("annualMonthCount").textContent="0";
+      annualDrawChart();
+    }
+  });
+  document.getElementById("btnAnnualClose")?.addEventListener("click",()=>annualModal.classList.remove("open"));
+  annualModal?.addEventListener("click",event=>{if(event.target===annualModal)annualModal.classList.remove("open");});
+  annualEndMonth?.addEventListener("change",annualUpdate);
+  document.getElementById("annualBars")?.addEventListener("click",()=>annualSetMode("bars"));
+  document.getElementById("annualLines")?.addEventListener("click",()=>annualSetMode("lines"));
+  document.getElementById("btnAnnualPng")?.addEventListener("click",()=>{
+    if(!annualCanvas)return;
+    const link=document.createElement("a");link.download=`CapacityTools_Maximos_Mensuales_${annualEndMonth.value}_${annualChartMode}.png`;
+    link.href=annualCanvas.toDataURL("image/png");link.click();
+  });
 
   // =========================
   // Panel oculto: Editar ocupación manual
